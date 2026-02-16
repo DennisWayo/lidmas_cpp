@@ -7,16 +7,8 @@
 ![Core](https://img.shields.io/badge/core-binary%20matrix-black)
 ![Graph](https://img.shields.io/badge/graph-Tanner-blue)
 ![Metrics](https://img.shields.io/badge/metrics-success%20rate%20%7C%20iterations-green)
-
-
-
-
-
-[![Release](https://img.shields.io/github/v/release/DennisWayo/lidmas_cpp)](https://github.com/DennisWayo/lidmas_cpp/releases/tag/v0.1)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)]()
-[![Build](https://img.shields.io/badge/build-CMake-blue)]()
-[![Status](https://img.shields.io/badge/status-research--prototype-orange)]()
+
 ## LiDMaS+
 
 Logical Injection & Decoding Modeling System
