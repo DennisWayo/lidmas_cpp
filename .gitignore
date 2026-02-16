@@ -1,0 +1,37 @@
+# =========================
+# CMake
+# =========================
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+build/
+
+# =========================
+# CLion / JetBrains
+# =========================
+.idea/
+*.iml
+
+# =========================
+# macOS
+# =========================
+.DS_Store
+
+# =========================
+# Compiled objects
+# =========================
+*.o
+*.obj
+*.out
+*.exe
+*.a
+*.so
+*.dylib
+
+# =========================
+# Logs
+# =========================
+*.log

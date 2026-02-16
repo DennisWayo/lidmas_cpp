@@ -1,0 +1,8 @@
+//
+// Created by Dennis Wayo on 15.02.2026.
+//
+
+#ifndef LIDMAS_CPP_REPETITIONCODE_H
+#define LIDMAS_CPP_REPETITIONCODE_H
+
+#endif //LIDMAS_CPP_REPETITIONCODE_H
