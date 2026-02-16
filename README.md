@@ -1,5 +1,4 @@
-
-[![Release](https://img.shields.io/github/v/release/DennisWayo/lidmas_cpp)]()
+[![Release](https://img.shields.io/github/v/release/DennisWayo/lidmas_cpp)](https://github.com/DennisWayo/lidmas_cpp/releases)
 [![C++20](https://img.shields.io/badge/C++-20-blue)]()
 ![Decoding](https://img.shields.io/badge/decoding-erasure--aware%20BP-purple)
 [![Channel](https://img.shields.io/badge/channel-bitflip%20%2B%20erasure-red)]()
