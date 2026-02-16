@@ -1,11 +1,13 @@
 
 [![Release](https://img.shields.io/github/v/release/DennisWayo/lidmas_cpp)]()
 [![C++20](https://img.shields.io/badge/C++-20-blue)]()
-[![Decoder](https://img.shields.io/badge/decoder-min--sum%20BP-purple)]()
+![Decoding](https://img.shields.io/badge/decoding-erasure--aware%20BP-purple)
 [![Channel](https://img.shields.io/badge/channel-bitflip%20%2B%20erasure-red)]()
 [![Simulation](https://img.shields.io/badge/simulation-MonteCarlo-green)]()
 [![Status](https://img.shields.io/badge/status-research--prototype-orange)]()
-
+![Core](https://img.shields.io/badge/core-binary%20matrix-black)
+![Graph](https://img.shields.io/badge/graph-Tanner-blue)
+![Metrics](https://img.shields.io/badge/metrics-success%20rate%20%7C%20iterations-green)
 
 ## LiDMaS+
 
