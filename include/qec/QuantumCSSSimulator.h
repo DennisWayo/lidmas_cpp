@@ -1,23 +1,20 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <vector>
 #include "core/BinaryMatrix.h"
-#include "decoders/BeliefPropagation.h"
-#include "graph/TannerGraph.h"
+#include "decoders/IDecoder.h"
+#include "qec/IQECChannel.h"
 #include "qec/LogicalOperators.h"
 
 class QuantumCSSSimulator {
 public:
-    enum class NoiseModel {
-        INDEPENDENT_XZ,
-        DEPOLARIZING
-    };
-
     struct RunConfig {
         int trials = 200;
         uint64_t seed_base = 1234567;
-        NoiseModel noise_model = NoiseModel::INDEPENDENT_XZ;
+        QECNoiseModel noise_model = QECNoiseModel::INDEPENDENT_XZ;
         double pX = 0.01;
         double pZ = 0.01;
         double p = 0.01;  // depolarizing probability
@@ -37,7 +34,9 @@ public:
 
     QuantumCSSSimulator(const BinaryMatrix& Hx,
                         const BinaryMatrix& Hz,
-                        BeliefPropagation::Params bp_params);
+                        const std::function<std::unique_ptr<IDecoder>()>& x_decoder_factory,
+                        const std::function<std::unique_ptr<IDecoder>()>& z_decoder_factory,
+                        IQECChannel& channel);
 
     QECStats run(const RunConfig& cfg,
                  const LogicalPair* logicals = nullptr) const;
@@ -45,9 +44,7 @@ public:
 private:
     BinaryMatrix hx_;
     BinaryMatrix hz_;
-    TannerGraph gx_;
-    TannerGraph gz_;
-    BeliefPropagation::Params bp_params_;
-
-    static bool isZeroSyndrome(const std::vector<int>& s);
+    std::function<std::unique_ptr<IDecoder>()> x_decoder_factory_;
+    std::function<std::unique_ptr<IDecoder>()> z_decoder_factory_;
+    IQECChannel& channel_;
 };
