@@ -21,7 +21,12 @@ add_executable(lidmas
         src/codes/LDPCGenerator.cpp
         include/codes/LDPCGenerator.h
         include/qec/CSSDecoder.h
+        include/qec/CSSCode.h
+        include/qec/CSSSyndrome.h
+        include/qec/LogicalOperators.h
         src/qec/CSSDecoder.cpp
+        src/qec/CSSCode.cpp
+        src/qec/LogicalOperators.cpp
         src/utils/CSVWriter.cpp
         include/utils/CSVWriter.h
 )

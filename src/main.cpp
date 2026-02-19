@@ -269,7 +269,7 @@ void runSweep(const SweepConfig& cfg, const RuntimeOptions& opts) {
 } // namespace
 
 int main(int argc, char** argv) {
-    std::cout << "LiDMaS+ v0.2 Sparse BP (LDPC BSC Sweep)\n";
+    std::cout << "LiDMaS+ v0.3 Sparse BP (LDPC BSC Sweep)\n";
     std::cout << "Usage flags: --bp=nms | --bp=sum-product | --alpha=0.8 | --quiet-iter-log\n";
 
     const RuntimeOptions opts = parseOptions(argc, argv);

@@ -1,36 +1,44 @@
 #pragma once
 
 #include <vector>
-#include "core/BinaryMatrix.h"
-#include "graph/TannerGraph.h"
 #include "decoders/BeliefPropagation.h"
+#include "qec/CSSCode.h"
+#include "qec/CSSSyndrome.h"
+#include "graph/TannerGraph.h"
 
 struct CSSDecodeResult {
-    std::vector<int> ex_hat;
-    std::vector<int> ez_hat;
-    std::vector<int> x_corrected;
-    std::vector<int> z_corrected;
-    // Concatenated [x_corrected | z_corrected]
-    std::vector<int> corrected_codeword;
+    std::vector<int> eX;
+    std::vector<int> eZ;
+
+    bool parity_sat_X = false;
+    bool parity_sat_Z = false;
+
+    bool has_logicals = false;
+
+    std::vector<int> logical_flip_X;  // Lz · eX
+    std::vector<int> logical_flip_Z;  // Lx · eZ
+    bool logical_fail = false;
+
+    int iters_X = 0;
+    int iters_Z = 0;
+    bool max_iter_hit_X = false;
+    bool max_iter_hit_Z = false;
 };
+
+using BeliefPropagationParams = BeliefPropagation::Params;
 
 class CSSDecoder {
 public:
-    CSSDecoder(const BinaryMatrix& hx,
-               const BinaryMatrix& hz,
-               BeliefPropagation::Params x_params = {},
-               BeliefPropagation::Params z_params = {});
+    CSSDecoder(const CSSCode& code,
+               BeliefPropagationParams params = {});
 
-    CSSDecodeResult decode(
-        const std::vector<int>& sx,
-        const std::vector<int>& sz,
-        const std::vector<int>& rx,
-        const std::vector<int>& rz,
-        const std::vector<int>& erasures,
+    CSSDecodeResult decode(const CSSSyndrome& syndrome,
         double px,
-        double pz);
+        double pz,
+        const std::vector<int>& erasures = {});
 
 private:
+    const CSSCode& code_;
     TannerGraph gx_;
     TannerGraph gz_;
     BeliefPropagation bpx_;
