@@ -23,10 +23,15 @@ add_executable(lidmas
         include/qec/CSSDecoder.h
         include/qec/CSSCode.h
         include/qec/CSSSyndrome.h
+        include/qec/PauliChannel.h
         include/qec/LogicalOperators.h
+        include/qec/QuantumCSSSimulator.h
         src/qec/CSSDecoder.cpp
         src/qec/CSSCode.cpp
+        src/qec/CSSSyndrome.cpp
+        src/qec/PauliChannel.cpp
         src/qec/LogicalOperators.cpp
+        src/qec/QuantumCSSSimulator.cpp
         src/utils/CSVWriter.cpp
         include/utils/CSVWriter.h
 )

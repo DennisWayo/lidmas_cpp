@@ -14,6 +14,7 @@
 #include "codes/LDPCGenerator.h"
 #include "decoders/BeliefPropagation.h"
 #include "graph/GraphDiagnostics.h"
+#include "qec/QuantumCSSSimulator.h"
 #include "graph/TannerGraph.h"
 #include "utils/CSVWriter.h"
 
@@ -39,6 +40,7 @@ struct RuntimeOptions {
     BeliefPropagation::Mode mode = BeliefPropagation::Mode::SUM_PRODUCT;
     double alpha = 0.8;
     bool log_decode_iterations = false;
+    std::string qec_mode;
 };
 
 struct PointStats {
@@ -61,9 +63,87 @@ RuntimeOptions parseOptions(int argc, char** argv) {
             opts.alpha = std::stod(arg.substr(std::string("--alpha=").size()));
         } else if (arg == "--quiet-iter-log") {
             opts.log_decode_iterations = false;
+        } else if (arg.rfind("--qec=", 0) == 0) {
+            opts.qec_mode = arg.substr(std::string("--qec=").size());
         }
     }
     return opts;
+}
+
+void runQecCssDemo(const RuntimeOptions& opts) {
+    std::cout << "LiDMaS+ v0.5 Quantum CSS Demo\n";
+
+    // Minimal commuting toy CSS pair for pipeline validation.
+    BinaryMatrix Hx(2, 5);
+    Hx.set(0, 0, 1); Hx.set(0, 1, 1);
+    Hx.set(1, 1, 1); Hx.set(1, 2, 1);
+
+    BinaryMatrix Hz(2, 5);
+    Hz.set(0, 0, 1); Hz.set(0, 1, 1); Hz.set(0, 2, 1);
+    Hz.set(1, 3, 1); Hz.set(1, 4, 1);
+
+    LogicalPair logicals;
+    logicals.LX = {1, 0, 0, 1, 0};
+    logicals.LZ = {0, 0, 1, 0, 1};
+
+    BeliefPropagation::Params params;
+    params.max_iters = 80;
+    params.damping = 0.0;
+    params.mode = opts.mode;
+    params.alpha = opts.alpha;
+    params.llr_max = 50.0;
+    params.convergence_tol = 1e-6;
+    params.log_iteration_stats = false;
+
+    QuantumCSSSimulator sim(Hx, Hz, params);
+
+    CSVWriter csv("qec_css_demo.csv", "p,ler_total,ler_x,ler_z,avg_iter_x,avg_iter_z");
+    const int trials = 200;
+
+    {
+        QuantumCSSSimulator::RunConfig cfg;
+        cfg.trials = trials;
+        cfg.seed_base = 7200000;
+        cfg.noise_model = QuantumCSSSimulator::NoiseModel::INDEPENDENT_XZ;
+        cfg.pX = 0.0;
+        cfg.pZ = 0.0;
+        const auto s = sim.run(cfg, &logicals);
+        std::cout << "[sanity] p=0.000"
+                  << "  LER_total=" << s.logical_total_fail_rate
+                  << "  LER_X=" << s.logical_X_fail_rate
+                  << "  LER_Z=" << s.logical_Z_fail_rate
+                  << "  avg_iter_X=" << s.avg_iter_X
+                  << "  avg_iter_Z=" << s.avg_iter_Z
+                  << "\n";
+    }
+
+    const std::vector<double> p_values{0.001, 0.010, 0.020};
+    for (double p : p_values) {
+        QuantumCSSSimulator::RunConfig cfg;
+        cfg.trials = trials;
+        cfg.seed_base = 7300000;
+        cfg.noise_model = QuantumCSSSimulator::NoiseModel::INDEPENDENT_XZ;
+        cfg.pX = p;
+        cfg.pZ = p;
+
+        const auto stats = sim.run(cfg, &logicals);
+        csv.writeCurve(
+            p,
+            stats.logical_total_fail_rate,
+            stats.logical_X_fail_rate,
+            stats.logical_Z_fail_rate,
+            stats.avg_iter_X,
+            stats.avg_iter_Z
+        );
+
+        std::cout << "p=" << std::fixed << std::setprecision(3) << p
+                  << "  LER_total=" << std::setprecision(6) << stats.logical_total_fail_rate
+                  << "  LER_X=" << std::setprecision(6) << stats.logical_X_fail_rate
+                  << "  LER_Z=" << std::setprecision(6) << stats.logical_Z_fail_rate
+                  << "  avg_iter_X=" << std::setprecision(2) << stats.avg_iter_X
+                  << "  avg_iter_Z=" << std::setprecision(2) << stats.avg_iter_Z
+                  << "\n";
+    }
 }
 
 PointStats runPoint(const BinaryMatrix& H,
@@ -269,10 +349,14 @@ void runSweep(const SweepConfig& cfg, const RuntimeOptions& opts) {
 } // namespace
 
 int main(int argc, char** argv) {
+    const RuntimeOptions opts = parseOptions(argc, argv);
+    if (opts.qec_mode == "css_demo") {
+        runQecCssDemo(opts);
+        return 0;
+    }
+
     std::cout << "LiDMaS+ v0.3 Sparse BP (LDPC BSC Sweep)\n";
     std::cout << "Usage flags: --bp=nms | --bp=sum-product | --alpha=0.8 | --quiet-iter-log\n";
-
-    const RuntimeOptions opts = parseOptions(argc, argv);
 
     const SweepConfig cfg_large{
         .m = 500,
