@@ -33,6 +33,28 @@ add_executable(lidmas
 
 target_include_directories(lidmas PRIVATE include)
 
+add_executable(lidmas_surface
+        src/surface_main.cpp
+        src/core/BinaryMatrix.cpp
+        src/decoders/BeliefPropagation.cpp
+        src/graph/TannerGraph.cpp
+        src/qec/LogicalOperators.cpp
+        src/surface/SurfaceLattice.cpp
+        src/surface/SurfaceCode.cpp
+        src/surface/SurfaceSyndrome.cpp
+        src/surface/SurfaceDecoder.cpp
+        include/decoders/BeliefPropagation.h
+        include/graph/TannerGraph.h
+        include/qec/LogicalOperators.h
+        include/surface/SurfaceLattice.h
+        include/surface/SurfaceCode.h
+        include/surface/SurfaceSyndrome.h
+        include/surface/SurfaceDecoder.h
+)
+
+target_include_directories(lidmas_surface PRIVATE include)
+
 if(OpenMP_CXX_FOUND)
     target_link_libraries(lidmas PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(lidmas_surface PRIVATE OpenMP::OpenMP_CXX)
 endif()
