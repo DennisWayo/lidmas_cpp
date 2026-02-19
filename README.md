@@ -12,13 +12,19 @@
 
 LiDMaS+ is a C++20 research codebase for classical LDPC belief propagation and CSS/surface-code-oriented extension layers.
 
+## Current Version
+
+**v0.6 — Surface MWPM Decoder (experimental)**
+
 ## What This Repository Includes
 
 - Validated LDPC BP engine (sum-product + normalized min-sum)
 - PEG-based LDPC construction and Tanner graph tooling
 - Monte Carlo sweeps with BER/FER/iteration diagnostics
 - CSS-ready decoding interfaces
-- Planar surface-code infrastructure and a dedicated surface runner
+- Planar surface-code infrastructure and dedicated surface runners
+- Surface decoder plugin registry (`stub`, `mwpm`, `uf` placeholder)
+- Surface threshold experiment harness with CSV output
 
 ## Repository Layout
 
@@ -84,6 +90,56 @@ Typical output fields:
 - `avg_iters_z`
 - `commutation_ok` (checks `Hx * Hz^T == 0 mod 2`)
 
+## Run: Surface Demo Modes (v0.6)
+
+Use the main executable:
+
+```bash
+./lidmas --surface_demo=stub
+./lidmas --surface_demo=mwpm
+./lidmas --surface_demo=uf
+```
+
+Printed fields:
+
+- `defect_count_avg`
+- `correction_weight_avg`
+- `logical_fail_rate`
+
+`uf` is currently a placeholder strategy for future union-find growth + peeling.
+
+## Run: Surface Threshold Harness (v0.6)
+
+```bash
+./lidmas --surface_threshold \
+  --decoder=mwpm \
+  --d=3,5,7 \
+  --p_start=0.01 --p_end=0.15 --p_step=0.01 \
+  --trials=2000 \
+  --seed=12345 \
+  --out=surface_threshold.csv
+```
+
+Supported decoder options:
+
+- `mwpm`
+- `stub`
+- `uf` (placeholder)
+
+CSV header:
+
+```text
+decoder,d,p,trials,LER,avg_defects,avg_correction_weight,avg_runtime_ms
+```
+
+## Run: Smoke Checks
+
+```bash
+./lidmas --smoke
+```
+
+This runs a lightweight surface sanity check (`d=3`, `p=0`, `mwpm`) and expects `LER=0`.
+
 ## Run: Quantum CSS Demo (v0.5 Layer)
 
 Use the LDPC binary with the optional QEC mode:
@@ -101,6 +157,17 @@ This runs a small CSS Monte Carlo demo and prints:
 - `avg_iter_Z`
 
 ## Version History
+
+### v0.6 — Surface MWPM Decoder (experimental)
+
+Adds the first experimental surface-code MWPM path and decoder plugin expansion while preserving the validated LDPC and CSS paths.
+
+- `MWPMDecoder` surface path integrated via decoder registry
+- Surface demo modes in `lidmas`: `--surface_demo=stub|mwpm|uf`
+- `UnionFindDecoder` placeholder (`uf`) for future true union-find decoding
+- Surface threshold harness: `--surface_threshold`
+- Threshold CSV metrics: `LER`, defect/correction means, runtime
+- Optional smoke check: `--smoke`
 
 ### v0.5 — Quantum CSS Monte Carlo Engine
 
