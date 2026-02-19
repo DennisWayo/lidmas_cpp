@@ -50,10 +50,23 @@ Research-grade LDPC BP implementation with validation diagnostics.
 - Reproducible CMake build
 
 Validated FER transition example:
--	p=0.06 → FER=0.01
--	p=0.07 → FER=0.115
--	p=0.08 → FER=0.355
--	p=0.09 → FER=0.755
--	p=0.10 → FER=0.965
+- p=0.06 → FER=0.01
+- p=0.07 → FER=0.115
+- p=0.08 → FER=0.355
+- p=0.09 → FER=0.755
+- p=0.10 → FER=0.965
 
 This version marks the first experimentally validated decoding engine.
+
+
+**v0.3** — CSS-Ready BP Engine
+
+Transition from classical LDPC decoding toward quantum error correction.
+
+- Modular CSS code structure (X/Z parity separation)
+- CSS syndrome handling layer
+- Logical operator scaffolding
+- Classical BP decoder reusable for X and Z decoding
+- Clean architectural separation for future QEC extensions
+
+This version prepares LiDMaS+ for quantum code integration (CSS, surface codes, and beyond).
