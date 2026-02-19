@@ -24,4 +24,36 @@ Logical Injection & Decoding Modeling System
 
 Architecture-level quantum error correction simulator with erasure-aware belief propagation and Monte Carlo performance benchmarking.
 
+## Version History
 
+**v0.1** — Baseline Belief Propagation Prototype
+
+Initial LDPC decoding framework.
+- BinaryMatrix core implementation
+- Tanner graph construction
+- Classical min-sum belief propagation
+- Basic Monte Carlo bit-flip (BSC) simulation
+- Metrics: success rate and average iterations
+
+This version established the foundational decoding architecture.
+
+
+**v0.2** — Validated LDPC Belief Propagation Engine
+
+Research-grade LDPC BP implementation with validation diagnostics.
+- PEG-generated regular LDPC codes (n=1000, m=500)
+- Sum-product and normalized min-sum decoding
+- Explicit all-zero codeword channel simulation
+- Monotonic FER waterfall validation
+- Parity satisfaction rate and max-iteration hit diagnostics
+- OpenMP-parallel Monte Carlo sweeps
+- Reproducible CMake build
+
+Validated FER transition example:
+-	p=0.06 → FER=0.01
+-	p=0.07 → FER=0.115
+-	p=0.08 → FER=0.355
+-	p=0.09 → FER=0.755
+-	p=0.10 → FER=0.965
+
+This version marks the first experimentally validated decoding engine.
