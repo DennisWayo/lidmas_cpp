@@ -38,7 +38,7 @@ TrialStats run_monte_carlo(
         for (auto& v : s) v &= 1;
 
         std::vector<int> e_hat =
-            bp.decodeErasureAware(s, erasures, ch.p_flip);
+            bp.decode(s, erasures, ch.p_flip);
 
         std::vector<int> s_hat = H.multiply(e_hat);
         for (auto& v : s_hat) v &= 1;
