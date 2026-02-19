@@ -9,10 +9,32 @@ find_package(OpenMP)
 add_executable(lidmas
         src/main.cpp
         src/core/BinaryMatrix.cpp
+        src/core/DecoderRegistry.cpp
+        src/core/RegisterDecoders.cpp
+        src/decoders/BPDecoderAdapter.cpp
         src/decoders/BeliefPropagation.cpp
+        include/core/DecoderConfig.h
+        include/core/DecoderRegistry.h
+        include/core/RegisterDecoders.h
+        include/decoders/IDecoder.h
+        include/decoders/BPDecoderAdapter.h
         src/utils/Channel.cpp
+        src/utils/BSCChannel.cpp
+        src/utils/SyndromeUtils.cpp
+        include/utils/IChannel.h
+        include/utils/BSCChannel.h
+        include/utils/SyndromeUtils.h
+        include/utils/SeedUtils.h
         include/sim/MonteCarlo.h
         src/sim/MonteCarlo.cpp
+        include/sim/LDPCSimulation.h
+        src/sim/LDPCSimulation.cpp
+        include/sim/CSSSimulation.h
+        src/sim/CSSSimulation.cpp
+        include/sim/SurfaceSimulation.h
+        src/sim/SurfaceSimulation.cpp
+        include/sim/SmokeTests.h
+        src/sim/SmokeTests.cpp
         include/graph/TannerGraph.h
         src/graph/TannerGraph.cpp
         include/graph/GraphDiagnostics.h
@@ -23,15 +45,39 @@ add_executable(lidmas
         include/qec/CSSDecoder.h
         include/qec/CSSCode.h
         include/qec/CSSSyndrome.h
+        include/qec/IQECChannel.h
         include/qec/PauliChannel.h
+        include/qec/PauliChannelAdapter.h
         include/qec/LogicalOperators.h
         include/qec/QuantumCSSSimulator.h
         src/qec/CSSDecoder.cpp
         src/qec/CSSCode.cpp
         src/qec/CSSSyndrome.cpp
         src/qec/PauliChannel.cpp
+        src/qec/PauliChannelAdapter.cpp
         src/qec/LogicalOperators.cpp
         src/qec/QuantumCSSSimulator.cpp
+        include/surface/SurfaceLattice.h
+        src/surface/SurfaceLattice.cpp
+        include/surface/SurfaceCode.h
+        src/surface/SurfaceCode.cpp
+        include/surface/SurfaceSyndrome.h
+        src/surface/SurfaceSyndrome.cpp
+        include/surface/SyndromeGraph.h
+        src/surface/SyndromeGraph.cpp
+        include/surface/MatchingProblem.h
+        src/surface/MatchingProblem.cpp
+        include/surface/ISurfaceDecoder.h
+        include/surface/SurfaceDecoderAdapter.h
+        src/surface/SurfaceDecoderAdapter.cpp
+        include/surface/SurfacePipeline.h
+        src/surface/SurfacePipeline.cpp
+        include/surface/MWPMStubDecoder.h
+        src/surface/MWPMStubDecoder.cpp
+        include/surface/BlossomMWPM.h
+        src/surface/BlossomMWPM.cpp
+        include/surface/MWPMDecoder.h
+        src/surface/MWPMDecoder.cpp
         src/utils/CSVWriter.cpp
         include/utils/CSVWriter.h
 )
