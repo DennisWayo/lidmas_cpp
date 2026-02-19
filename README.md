@@ -24,6 +24,31 @@ Logical Injection & Decoding Modeling System
 
 Architecture-level quantum error correction simulator with erasure-aware belief propagation and Monte Carlo performance benchmarking.
 
+## v0.4 Surface Code
+
+LiDMaS+ now includes an additive planar surface-code layer (`include/surface`, `src/surface`) built on top of the existing BP/CSS abstractions.
+
+Build:
+
+```bash
+mkdir -p build
+cd build
+cmake ..
+make
+```
+
+Run surface decoder sanity (distance-3, zero noise):
+
+```bash
+./lidmas_surface --d=3 --trials=200 --px=0 --pz=0
+```
+
+Run a small logical-failure sweep:
+
+```bash
+./lidmas_surface --d=3 --sweep --p_start=0.01 --p_end=0.10 --p_step=0.01 --trials=500
+```
+
 ## Version History
 
 **v0.1** — Baseline Belief Propagation Prototype
