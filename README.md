@@ -84,7 +84,33 @@ Typical output fields:
 - `avg_iters_z`
 - `commutation_ok` (checks `Hx * Hz^T == 0 mod 2`)
 
+## Run: Quantum CSS Demo (v0.5 Layer)
+
+Use the LDPC binary with the optional QEC mode:
+
+```bash
+./lidmas --qec=css_demo
+```
+
+This runs a small CSS Monte Carlo demo and prints:
+
+- `LER_total`
+- `LER_X`
+- `LER_Z`
+- `avg_iter_X`
+- `avg_iter_Z`
+
 ## Version History
+
+### v0.5 — Quantum CSS Monte Carlo Engine
+
+Adds a dedicated quantum noise and syndrome-simulation layer while preserving existing LDPC sweep behavior.
+
+- `PauliChannel` for independent X/Z and depolarizing sampling
+- Reusable CSS syndrome extraction helper
+- Logical-failure helper utilities (`LogicalPair`, mod-2 overlap checks)
+- `QuantumCSSSimulator` for dual BP decoding (X/Z), residual checks, and QEC metrics
+- Optional CLI demo mode: `--qec=css_demo`
 
 ### v0.4 — Surface Code Infrastructure
 
