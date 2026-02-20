@@ -13,9 +13,14 @@
 #include "sim/LDPCSimulation.h"
 #include "sim/SurfaceSimulation.h"
 #include "sim/SurfaceThresholdRunner.h"
+#include "LLRWeightField.h"
 #include "surface/MWPMDecoder.h"
 #include "surface/SurfaceCode.h"
 #include "utils/BSCChannel.h"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace {
 
@@ -87,6 +92,51 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
     if (!near_zero(css0.ler_total)) {
         std::cerr << "[selftest] CSS p=0 failed\n";
         return false;
+    }
+
+    // LLR weight formalism sanity checks.
+    {
+        const LLRWeightField w01(0.01, 0.01, 0.01);
+        const LLRWeightField w10(0.10, 0.10, 0.10);
+        const LLRWeightField w30(0.30, 0.30, 0.30);
+        const double a = w01.edge_weight(0, 1);
+        const double b = w10.edge_weight(0, 1);
+        const double c = w30.edge_weight(0, 1);
+        if (!(a > b && b > c)) {
+            std::cerr << "[selftest] LLR monotonicity failed: expected w(0.01)>w(0.1)>w(0.3)\n";
+            return false;
+        }
+
+        const LLRWeightField wClamp(0.0, 0.0, 0.0, 1e-12, 1.0 - 1e-12);
+        const double wc = wClamp.edge_weight(0, 1);
+        if (!std::isfinite(wc)) {
+            std::cerr << "[selftest] LLR clamp failed: p=0 produced non-finite weight\n";
+            return false;
+        }
+
+#ifdef _OPENMP
+        auto computeValues = [](int threads) {
+            std::vector<double> values(4096, 0.0);
+#pragma omp parallel for schedule(static) num_threads(threads)
+            for (int i = 0; i < 4096; ++i) {
+                const LLRWeightField wf(0.02, 0.02, 0.02, 1e-12, 1.0 - 1e-12);
+                values[static_cast<size_t>(i)] = wf.edge_weight(i, i + 1);
+            }
+            return values;
+        };
+        const auto v1 = computeValues(1);
+        const auto v8 = computeValues(8);
+        if (v1.size() != v8.size()) {
+            std::cerr << "[selftest] LLR threaded determinism failed (threads=1 vs 8)\n";
+            return false;
+        }
+        for (size_t i = 0; i < v1.size(); ++i) {
+            if (std::abs(v1[i] - v8[i]) > 1e-15) {
+                std::cerr << "[selftest] LLR threaded determinism failed at index " << i << "\n";
+                return false;
+            }
+        }
+#endif
     }
 
     // Surface MWPM sanity checks (deterministic, no RNG).

@@ -123,9 +123,15 @@ void printHelp(const PluginRegistry& plugins) {
               << "  --bp=nms                      Use normalized min-sum BP\n"
               << "  --alpha=<value>               Set normalized min-sum alpha\n"
               << "  --neural_model=<path>         Neural model JSON file for neural_mwpm\n"
-              << "  --weight_mode=<uniform|neural> Select UF weight field mode (default uniform)\n"
+              << "  --weight_mode=<uniform|neural|llr> Select shared surface weight mode (default uniform)\n"
               << "  --uf_weighted                 Enable weighted Union-Find growth\n"
               << "  --neural_weights=<path>       Neural weights JSON for weighted uf\n"
+              << "  --llr_p_data=<x>              LLR mode data-edge probability (default sweep p)\n"
+              << "  --llr_p_meas=<x>              LLR mode measurement-edge probability (default sweep p)\n"
+              << "  --llr_p_idle=<x>              LLR mode idle-edge probability (default sweep p)\n"
+              << "  --llr_clamp_min=<x>           LLR probability clamp min (default 1e-12)\n"
+              << "  --llr_clamp_max=<x>           LLR probability clamp max (default 1-1e-12)\n"
+              << "  --mwpm_weight_scale=<x>       MWPM weight scaling factor (default 1000)\n"
               << "  --min_trials=<N>              Adaptive threshold minimum trials per point\n"
               << "  --max_trials=<N>              Adaptive threshold maximum trials per point\n"
               << "  --batch_trials=<N>            Adaptive threshold trials per increment\n"
@@ -257,6 +263,12 @@ void runQecSurfaceDemo(const std::string& mode,
                        bool uf_weighted,
                        const std::string& neural_weights_path,
                        const std::string& neural_model_path,
+                       double llr_p_data,
+                       double llr_p_meas,
+                       double llr_p_idle,
+                       double llr_clamp_min,
+                       double llr_clamp_max,
+                       double mwpm_weight_scale,
                        const PluginRegistry& plugins) {
     std::string decoder = mode;
     if (decoder.empty()) decoder = "stub";
@@ -282,7 +294,13 @@ void runQecSurfaceDemo(const std::string& mode,
     cfg.p_values = {0.00, 0.02, 0.05, 0.08};
     cfg.decoder_name = decoder;
     cfg.weight_mode = weight_mode;
-    cfg.uf_weighted = uf_weighted || (weight_mode == "neural");
+    cfg.uf_weighted = uf_weighted || (weight_mode == "neural") || (weight_mode == "llr");
+    cfg.llr_p_data = llr_p_data;
+    cfg.llr_p_meas = llr_p_meas;
+    cfg.llr_p_idle = llr_p_idle;
+    cfg.llr_clamp_min = llr_clamp_min;
+    cfg.llr_clamp_max = llr_clamp_max;
+    cfg.mwpm_weight_scale = mwpm_weight_scale;
     cfg.neural_weights_path = neural_weights_path;
     cfg.neural_model_path = neural_model_path;
 
@@ -446,11 +464,23 @@ int main(int argc, char** argv) {
     RegisterAllPlugins(plugins);
     std::string weight_mode = getValuePrefix(args, "--weight_mode=");
     if (weight_mode.empty()) weight_mode = "uniform";
-    if (weight_mode != "uniform" && weight_mode != "neural") {
+    if (weight_mode != "uniform" && weight_mode != "neural" && weight_mode != "llr") {
         std::cout << "Unknown --weight_mode='" << weight_mode
                   << "', falling back to uniform.\n";
         weight_mode = "uniform";
     }
+    const std::string llr_p_data_arg = getValuePrefix(args, "--llr_p_data=");
+    const std::string llr_p_meas_arg = getValuePrefix(args, "--llr_p_meas=");
+    const std::string llr_p_idle_arg = getValuePrefix(args, "--llr_p_idle=");
+    const std::string llr_clamp_min_arg = getValuePrefix(args, "--llr_clamp_min=");
+    const std::string llr_clamp_max_arg = getValuePrefix(args, "--llr_clamp_max=");
+    const std::string mwpm_weight_scale_arg = getValuePrefix(args, "--mwpm_weight_scale=");
+    const double llr_p_data = llr_p_data_arg.empty() ? -1.0 : std::stod(llr_p_data_arg);
+    const double llr_p_meas = llr_p_meas_arg.empty() ? -1.0 : std::stod(llr_p_meas_arg);
+    const double llr_p_idle = llr_p_idle_arg.empty() ? -1.0 : std::stod(llr_p_idle_arg);
+    const double llr_clamp_min = llr_clamp_min_arg.empty() ? 1e-12 : std::stod(llr_clamp_min_arg);
+    const double llr_clamp_max = llr_clamp_max_arg.empty() ? (1.0 - 1e-12) : std::stod(llr_clamp_max_arg);
+    const double mwpm_weight_scale = mwpm_weight_scale_arg.empty() ? 1000.0 : std::stod(mwpm_weight_scale_arg);
     const bool uf_weighted = hasFlag(args, "--uf_weighted");
     const std::string neural_weights_path = getValuePrefix(args, "--neural_weights=");
     const std::string neural_model_path = getValuePrefix(args, "--neural_model=");
@@ -489,7 +519,13 @@ int main(int argc, char** argv) {
         if (!out.empty()) cfg.out_csv = out;
         if (hasFlag(args, "--monotonic_smooth")) cfg.monotonic_smooth = true;
         cfg.weight_mode = weight_mode;
-        if (uf_weighted || weight_mode == "neural") cfg.uf_weighted = true;
+        if (uf_weighted || weight_mode == "neural" || weight_mode == "llr") cfg.uf_weighted = true;
+        cfg.llr_p_data = llr_p_data;
+        cfg.llr_p_meas = llr_p_meas;
+        cfg.llr_p_idle = llr_p_idle;
+        cfg.llr_clamp_min = llr_clamp_min;
+        cfg.llr_clamp_max = llr_clamp_max;
+        cfg.mwpm_weight_scale = mwpm_weight_scale;
         const std::string min_trials = getValuePrefix(args, "--min_trials=");
         if (!min_trials.empty()) {
             cfg.min_trials = std::stoi(min_trials);
@@ -540,7 +576,9 @@ int main(int argc, char** argv) {
     const std::string surface_demo_mode = getValuePrefix(args, "--surface_demo=");
     if (has_surface_demo_flag || !surface_demo_mode.empty()) {
         const std::string mode = surface_demo_mode.empty() ? "stub" : surface_demo_mode;
-        runQecSurfaceDemo(mode, weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
+        runQecSurfaceDemo(mode, weight_mode, uf_weighted, neural_weights_path, neural_model_path,
+                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                          plugins);
         return 0;
     }
 
@@ -550,19 +588,27 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (qec_mode == "surface_stub") {
-        runQecSurfaceDemo("stub", weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
+        runQecSurfaceDemo("stub", weight_mode, uf_weighted, neural_weights_path, neural_model_path,
+                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                          plugins);
         return 0;
     }
     if (qec_mode == "surface_mwpm") {
-        runQecSurfaceDemo("mwpm", weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
+        runQecSurfaceDemo("mwpm", weight_mode, uf_weighted, neural_weights_path, neural_model_path,
+                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                          plugins);
         return 0;
     }
     if (qec_mode == "surface_uf") {
-        runQecSurfaceDemo("uf", weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
+        runQecSurfaceDemo("uf", weight_mode, uf_weighted, neural_weights_path, neural_model_path,
+                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                          plugins);
         return 0;
     }
     if (qec_mode == "surface_neural_mwpm") {
-        runQecSurfaceDemo("neural_mwpm", weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
+        runQecSurfaceDemo("neural_mwpm", weight_mode, uf_weighted, neural_weights_path, neural_model_path,
+                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                          plugins);
         return 0;
     }
 

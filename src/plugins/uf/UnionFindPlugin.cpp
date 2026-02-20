@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "LLRWeightField.h"
 #include "NeuralWeightField.h"
 #include "UniformWeightField.h"
 #include "decoders/UnionFindDecoder.h"
@@ -35,12 +36,17 @@ void UnionFindPlugin::configure(const DecoderConfig& cfg) {
 }
 
 SurfaceCorrection UnionFindPlugin::decode(const SurfaceSyndrome& syn, const SurfaceCode& code) {
+    auto getDoubleParam = [&](const std::string& key, double fallback) {
+        const auto it = cfg_.double_params.find(key);
+        return (it == cfg_.double_params.end()) ? fallback : it->second;
+    };
+
     std::string weight_mode = "uniform";
     auto weight_mode_it = cfg_.string_params.find("weight_mode");
     if (weight_mode_it != cfg_.string_params.end() && !weight_mode_it->second.empty()) {
         weight_mode = weight_mode_it->second;
     }
-    if (weight_mode != "uniform" && weight_mode != "neural") {
+    if (weight_mode != "uniform" && weight_mode != "neural" && weight_mode != "llr") {
         weight_mode = "uniform";
     }
 
@@ -49,7 +55,7 @@ SurfaceCorrection UnionFindPlugin::decode(const SurfaceSyndrome& syn, const Surf
     if (weighted_it != cfg_.int_params.end()) {
         uf_weighted = (weighted_it->second != 0);
     }
-    if (weight_mode == "neural") uf_weighted = true;
+    if (weight_mode == "neural" || weight_mode == "llr") uf_weighted = true;
 
     std::string neural_weights_path;
     auto neural_it = cfg_.string_params.find("neural_weights");
@@ -65,6 +71,11 @@ SurfaceCorrection UnionFindPlugin::decode(const SurfaceSyndrome& syn, const Surf
 
     const double p_error = cfg_.p;
     const uint64_t seed = cfg_.seed;
+    const double llr_p_data = getDoubleParam("llr_p_data", p_error);
+    const double llr_p_meas = getDoubleParam("llr_p_meas", p_error);
+    const double llr_p_idle = getDoubleParam("llr_p_idle", p_error);
+    const double llr_clamp_min = getDoubleParam("llr_clamp_min", 1e-12);
+    const double llr_clamp_max = getDoubleParam("llr_clamp_max", 1.0 - 1e-12);
 
     if (!uf_weighted) {
         if (cached_decoder_ == nullptr
@@ -80,6 +91,11 @@ SurfaceCorrection UnionFindPlugin::decode(const SurfaceSyndrome& syn, const Surf
             cached_weight_mode_ = "uniform";
             cached_p_error_ = -1.0;
             cached_seed_ = 0;
+            cached_llr_p_data_ = -1.0;
+            cached_llr_p_meas_ = -1.0;
+            cached_llr_p_idle_ = -1.0;
+            cached_llr_clamp_min_ = 1e-12;
+            cached_llr_clamp_max_ = 1.0 - 1e-12;
         }
         return bitmaskToCorrection(cached_decoder_->decode(syn));
     }
@@ -89,12 +105,21 @@ SurfaceCorrection UnionFindPlugin::decode(const SurfaceSyndrome& syn, const Surf
         || cached_code_ != &code
         || !cached_weighted_mode_
         || cached_weight_mode_ != weight_mode
-        || cached_neural_weights_path_ != neural_weights_path);
+        || cached_neural_weights_path_ != neural_weights_path
+        || (weight_mode == "llr" && (
+            cached_llr_p_data_ != llr_p_data ||
+            cached_llr_p_meas_ != llr_p_meas ||
+            cached_llr_p_idle_ != llr_p_idle ||
+            cached_llr_clamp_min_ != llr_clamp_min ||
+            cached_llr_clamp_max_ != llr_clamp_max)));
     if (rebuild_weighted
         || (weight_mode == "neural" && (cached_p_error_ != p_error || cached_seed_ != seed))) {
         if (weight_mode == "neural") {
             cached_weight_field_ = std::make_unique<NeuralWeightField>(
                 code.lattice().distance(), p_error, seed);
+        } else if (weight_mode == "llr") {
+            cached_weight_field_ = std::make_unique<LLRWeightField>(
+                llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max);
         } else {
             cached_weight_field_ = std::make_unique<UniformWeightField>();
         }
@@ -111,6 +136,11 @@ SurfaceCorrection UnionFindPlugin::decode(const SurfaceSyndrome& syn, const Surf
         cached_weight_mode_ = weight_mode;
         cached_p_error_ = p_error;
         cached_seed_ = seed;
+        cached_llr_p_data_ = llr_p_data;
+        cached_llr_p_meas_ = llr_p_meas;
+        cached_llr_p_idle_ = llr_p_idle;
+        cached_llr_clamp_min_ = llr_clamp_min;
+        cached_llr_clamp_max_ = llr_clamp_max;
     }
 
     cached_weighted_decoder_->setWeighted(true);

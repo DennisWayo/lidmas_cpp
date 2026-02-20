@@ -24,6 +24,11 @@ private:
     std::string cached_weight_mode_ = "uniform";
     uint64_t cached_seed_ = 0;
     double cached_p_error_ = -1.0;
+    double cached_llr_p_data_ = -1.0;
+    double cached_llr_p_meas_ = -1.0;
+    double cached_llr_p_idle_ = -1.0;
+    double cached_llr_clamp_min_ = 1e-12;
+    double cached_llr_clamp_max_ = 1.0 - 1e-12;
     std::unique_ptr<WeightField> cached_weight_field_;
     std::unique_ptr<UnionFindDecoder> cached_decoder_;
     std::unique_ptr<lidmas_v07::UnionFindDecoder> cached_weighted_decoder_;
