@@ -14,7 +14,7 @@ LiDMaS+ is a C++20 research codebase for classical LDPC belief propagation and C
 
 ## Current Version
 
-**v0.6 — Surface MWPM Decoder (experimental)**
+**v0.6 — Surface MWPM decoder (boundary-aware) + threshold harness**
 
 ## What This Repository Includes
 
@@ -23,8 +23,8 @@ LiDMaS+ is a C++20 research codebase for classical LDPC belief propagation and C
 - Monte Carlo sweeps with BER/FER/iteration diagnostics
 - CSS-ready decoding interfaces
 - Planar surface-code infrastructure and dedicated surface runners
-- Surface decoder plugin registry (`stub`, `mwpm`, `uf` placeholder)
-- Surface threshold experiment harness with CSV output
+- Surface decoder plugin registry (`stub`, `mwpm`, `uf`, `neural_mwpm`)
+- Surface threshold harness with OpenMP, confidence intervals, and threshold analysis
 
 ## Repository Layout
 
@@ -98,6 +98,7 @@ Use the main executable:
 ./lidmas --surface_demo=stub
 ./lidmas --surface_demo=mwpm
 ./lidmas --surface_demo=uf
+./lidmas --surface_demo=neural_mwpm --neural_model=path/to/model.json
 ```
 
 Printed fields:
@@ -106,7 +107,7 @@ Printed fields:
 - `correction_weight_avg`
 - `logical_fail_rate`
 
-`uf` is currently a placeholder strategy for future union-find growth + peeling.
+`uf` remains experimental.
 
 ## Run: Surface Threshold Harness (v0.6)
 
@@ -116,6 +117,7 @@ Printed fields:
   --d=3,5,7 \
   --p_start=0.01 --p_end=0.15 --p_step=0.01 \
   --trials=2000 \
+  --threads=8 \
   --seed=12345 \
   --out=surface_threshold.csv
 ```
@@ -124,13 +126,31 @@ Supported decoder options:
 
 - `mwpm`
 - `stub`
-- `uf` (placeholder)
+- `uf`
+- `neural_mwpm` (with optional `--neural_model=<path>`)
+
+Optional analysis flags:
+
+- `--estimate_threshold` (pairwise crossing estimate)
+- `--scaling_fit` (finite-size scaling fit for `p_c` and `nu`)
+- `--auto_threshold` (compat alias for threshold estimate)
+
+Adaptive-threshold flags:
+
+- `--min_trials=<N>`
+- `--max_trials=<N>`
+- `--batch_trials=<N>`
+- `--target_ci_halfwidth=<x>`
+- `--target_rel_ci=<x>`
+- `--monotonic_smooth`
 
 CSV header:
 
 ```text
-decoder,d,p,trials,LER,avg_defects,avg_correction_weight,avg_runtime_ms
+distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate
 ```
+
+Per-point console output includes Wilson 95% CI and decoder fail rate.
 
 ## Run: Smoke Checks
 
@@ -158,16 +178,16 @@ This runs a small CSS Monte Carlo demo and prints:
 
 ## Version History
 
-### v0.6 — Surface MWPM Decoder (experimental)
+### v0.6 — Surface MWPM decoder (boundary-aware) + threshold harness
 
-Adds the first experimental surface-code MWPM path and decoder plugin expansion while preserving the validated LDPC and CSS paths.
+Adds boundary-aware surface MWPM matching and a stabilized threshold harness while preserving validated LDPC and CSS paths.
 
-- `MWPMDecoder` surface path integrated via decoder registry
-- Surface demo modes in `lidmas`: `--surface_demo=stub|mwpm|uf`
-- `UnionFindDecoder` placeholder (`uf`) for future true union-find decoding
-- Surface threshold harness: `--surface_threshold`
-- Threshold CSV metrics: `LER`, defect/correction means, runtime
-- Optional smoke check: `--smoke`
+- `MWPMDecoder` boundary matching for planar syndromes (defect-to-boundary support)
+- Surface decoder plugins in `lidmas`: `--surface_demo=stub|mwpm|uf|neural_mwpm`
+- Surface threshold harness with OpenMP support and `--threads`
+- Wilson 95% confidence intervals and per-point `decoder_fail_rate`
+- Optional threshold analysis: `--estimate_threshold`, `--scaling_fit`, `--auto_threshold`
+- Failure capture to `surface_decoder_failure_dump.txt` on first decoder exception
 
 ### v0.5 — Quantum CSS Monte Carlo Engine
 
