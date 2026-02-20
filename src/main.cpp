@@ -123,6 +123,9 @@ void printHelp(const PluginRegistry& plugins) {
               << "  --bp=nms                      Use normalized min-sum BP\n"
               << "  --alpha=<value>               Set normalized min-sum alpha\n"
               << "  --neural_model=<path>         Neural model JSON file for neural_mwpm\n"
+              << "  --weight_mode=<uniform|neural> Select UF weight field mode (default uniform)\n"
+              << "  --uf_weighted                 Enable weighted Union-Find growth\n"
+              << "  --neural_weights=<path>       Neural weights JSON for weighted uf\n"
               << "  --min_trials=<N>              Adaptive threshold minimum trials per point\n"
               << "  --max_trials=<N>              Adaptive threshold maximum trials per point\n"
               << "  --batch_trials=<N>            Adaptive threshold trials per increment\n"
@@ -250,6 +253,9 @@ std::vector<int> parseDistancesCsv(const std::string& s) {
 }
 
 void runQecSurfaceDemo(const std::string& mode,
+                       const std::string& weight_mode,
+                       bool uf_weighted,
+                       const std::string& neural_weights_path,
                        const std::string& neural_model_path,
                        const PluginRegistry& plugins) {
     std::string decoder = mode;
@@ -275,6 +281,9 @@ void runQecSurfaceDemo(const std::string& mode,
     cfg.seed_base = 8400000;
     cfg.p_values = {0.00, 0.02, 0.05, 0.08};
     cfg.decoder_name = decoder;
+    cfg.weight_mode = weight_mode;
+    cfg.uf_weighted = uf_weighted || (weight_mode == "neural");
+    cfg.neural_weights_path = neural_weights_path;
     cfg.neural_model_path = neural_model_path;
 
     const auto points = SurfaceSimulation::run_decoder_sweep(cfg, plugins);
@@ -435,6 +444,15 @@ int main(int argc, char** argv) {
     const std::vector<std::string> args = toArgs(argc, argv);
     PluginRegistry plugins;
     RegisterAllPlugins(plugins);
+    std::string weight_mode = getValuePrefix(args, "--weight_mode=");
+    if (weight_mode.empty()) weight_mode = "uniform";
+    if (weight_mode != "uniform" && weight_mode != "neural") {
+        std::cout << "Unknown --weight_mode='" << weight_mode
+                  << "', falling back to uniform.\n";
+        weight_mode = "uniform";
+    }
+    const bool uf_weighted = hasFlag(args, "--uf_weighted");
+    const std::string neural_weights_path = getValuePrefix(args, "--neural_weights=");
     const std::string neural_model_path = getValuePrefix(args, "--neural_model=");
     if (hasFlag(args, "--help") || hasFlag(args, "-h")) {
         printHelp(plugins);
@@ -470,6 +488,8 @@ int main(int argc, char** argv) {
         const std::string out = getValuePrefix(args, "--out=");
         if (!out.empty()) cfg.out_csv = out;
         if (hasFlag(args, "--monotonic_smooth")) cfg.monotonic_smooth = true;
+        cfg.weight_mode = weight_mode;
+        if (uf_weighted || weight_mode == "neural") cfg.uf_weighted = true;
         const std::string min_trials = getValuePrefix(args, "--min_trials=");
         if (!min_trials.empty()) {
             cfg.min_trials = std::stoi(min_trials);
@@ -506,6 +526,7 @@ int main(int argc, char** argv) {
         if (hasFlag(args, "--estimate_threshold")) cfg.estimate_threshold = true;
         if (hasFlag(args, "--scaling_fit")) cfg.scaling_fit = true;
         cfg.adaptive_enabled = adaptive_requested;
+        cfg.neural_weights_path = neural_weights_path;
         cfg.neural_model_path = neural_model_path;
         return SurfaceThresholdRunner::run(cfg, plugins);
     }
@@ -519,7 +540,7 @@ int main(int argc, char** argv) {
     const std::string surface_demo_mode = getValuePrefix(args, "--surface_demo=");
     if (has_surface_demo_flag || !surface_demo_mode.empty()) {
         const std::string mode = surface_demo_mode.empty() ? "stub" : surface_demo_mode;
-        runQecSurfaceDemo(mode, neural_model_path, plugins);
+        runQecSurfaceDemo(mode, weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
         return 0;
     }
 
@@ -529,19 +550,19 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (qec_mode == "surface_stub") {
-        runQecSurfaceDemo("stub", neural_model_path, plugins);
+        runQecSurfaceDemo("stub", weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
         return 0;
     }
     if (qec_mode == "surface_mwpm") {
-        runQecSurfaceDemo("mwpm", neural_model_path, plugins);
+        runQecSurfaceDemo("mwpm", weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
         return 0;
     }
     if (qec_mode == "surface_uf") {
-        runQecSurfaceDemo("uf", neural_model_path, plugins);
+        runQecSurfaceDemo("uf", weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
         return 0;
     }
     if (qec_mode == "surface_neural_mwpm") {
-        runQecSurfaceDemo("neural_mwpm", neural_model_path, plugins);
+        runQecSurfaceDemo("neural_mwpm", weight_mode, uf_weighted, neural_weights_path, neural_model_path, plugins);
         return 0;
     }
 

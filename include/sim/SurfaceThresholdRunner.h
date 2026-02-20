@@ -17,6 +17,9 @@ struct SurfaceThresholdConfig {
     uint64_t seed = 12345;
     std::string out_csv = "surface_threshold.csv";
     bool monotonic_smooth = false;
+    std::string weight_mode = "uniform";
+    bool uf_weighted = false;
+    std::string neural_weights_path;
     std::string neural_model_path;
     int min_trials = 200;
     int max_trials = 0; // resolved at runtime

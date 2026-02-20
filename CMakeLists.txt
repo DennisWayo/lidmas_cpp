@@ -14,7 +14,11 @@ add_executable(lidmas
         src/core/RegisterDecoders.cpp
         src/core/RegisterPlugins.cpp
         src/decoders/BPDecoderAdapter.cpp
+        src/decoders/UnionFindDecoder.cpp
         src/decoders/BeliefPropagation.cpp
+        src/models/NeuralWeightModel.cpp
+        src/UniformWeightField.cpp
+        src/NeuralWeightField.cpp
         include/core/DecoderConfig.h
         include/core/IDecoderPlugin.h
         include/core/PluginRegistry.h
@@ -103,7 +107,7 @@ add_executable(lidmas
         include/utils/CSVWriter.h
 )
 
-target_include_directories(lidmas PRIVATE include)
+target_include_directories(lidmas PRIVATE include src)
 
 add_executable(lidmas_surface
         src/surface_main.cpp

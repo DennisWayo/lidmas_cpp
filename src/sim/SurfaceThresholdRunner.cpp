@@ -902,9 +902,13 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         dec_cfg.distance = d;
         dec_cfg.seed = cfg.seed + static_cast<uint64_t>(d) * 1000000ULL;
         dec_cfg.string_params["decoder_name"] = decoder_name;
+        dec_cfg.string_params["weight_mode"] = cfg.weight_mode;
         dec_cfg.string_params["neural_model"] = cfg.neural_model_path;
+        dec_cfg.string_params["neural_weights"] =
+            cfg.neural_weights_path.empty() ? cfg.neural_model_path : cfg.neural_weights_path;
         dec_cfg.int_params["distance"] = d;
         dec_cfg.int_params["seed"] = static_cast<int>(dec_cfg.seed & 0x7fffffffULL);
+        dec_cfg.int_params["uf_weighted"] = (cfg.uf_weighted || cfg.weight_mode == "neural") ? 1 : 0;
         dec_cfg.ptr_params["surface_code"] = &code;
 
         {

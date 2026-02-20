@@ -45,10 +45,14 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceSweepConfig& c
     dec_cfg.trials = cfg.trials;
     dec_cfg.seed = cfg.seed_base;
     dec_cfg.string_params["decoder_name"] = decoder_name;
+    dec_cfg.string_params["weight_mode"] = cfg.weight_mode;
     dec_cfg.string_params["neural_model"] = cfg.neural_model_path;
+    dec_cfg.string_params["neural_weights"] =
+        cfg.neural_weights_path.empty() ? cfg.neural_model_path : cfg.neural_weights_path;
     dec_cfg.int_params["distance"] = cfg.d;
     dec_cfg.int_params["trials"] = cfg.trials;
     dec_cfg.int_params["seed"] = static_cast<int>(cfg.seed_base & 0x7fffffffULL);
+    dec_cfg.int_params["uf_weighted"] = (cfg.uf_weighted || cfg.weight_mode == "neural") ? 1 : 0;
     dec_cfg.ptr_params["surface_code"] = &code;
 
     std::unique_ptr<IDecoderPlugin> plugin_base = registry->create(decoder_name);
