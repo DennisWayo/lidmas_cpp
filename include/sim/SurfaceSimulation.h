@@ -12,6 +12,9 @@ struct SurfaceSweepConfig {
     uint64_t seed_base = 8400000;
     std::vector<double> p_values;
     std::string decoder_name = "stub";
+    std::string weight_mode = "uniform";
+    bool uf_weighted = false;
+    std::string neural_weights_path;
     std::string neural_model_path;
 };
 
