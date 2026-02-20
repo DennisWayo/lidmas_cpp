@@ -20,6 +20,7 @@ struct SurfaceSweepConfig {
     double llr_clamp_min = 1e-12;
     double llr_clamp_max = 1.0 - 1e-12;
     double mwpm_weight_scale = 1000.0;
+    std::string mwpm_graph = "full";
     std::string neural_weights_path;
     std::string neural_model_path;
 };

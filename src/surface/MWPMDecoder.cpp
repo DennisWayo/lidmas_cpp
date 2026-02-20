@@ -115,16 +115,47 @@ MWPMDecoder::MWPMDecoder(const SurfaceCode& code)
       d_(code.lattice().distance()),
       weight_field_(&uniform_weight_field_),
       weighted_mode_(false),
-      weight_scale_(1000.0) {}
+      weight_scale_(1000.0),
+      graph_mode_(GraphMode::FULL) {}
+
+MWPMDecoder::MWPMDecoder(const SurfaceCode& code, GraphMode graph_mode)
+    : code_(code),
+      d_(code.lattice().distance()),
+      weight_field_(&uniform_weight_field_),
+      weighted_mode_(false),
+      weight_scale_(1000.0),
+      graph_mode_(graph_mode) {}
 
 MWPMDecoder::MWPMDecoder(const SurfaceCode& code,
                          const WeightField* weight_field,
                          double weight_scale)
+    : MWPMDecoder(code, weight_field, weight_scale, GraphMode::FULL) {}
+
+MWPMDecoder::MWPMDecoder(const SurfaceCode& code,
+                         const WeightField* weight_field,
+                         double weight_scale,
+                         GraphMode graph_mode)
     : code_(code),
       d_(code.lattice().distance()),
       weight_field_(weight_field ? weight_field : &uniform_weight_field_),
       weighted_mode_(weight_field != nullptr),
-      weight_scale_(weight_scale > 0.0 ? weight_scale : 1000.0) {}
+      weight_scale_(weight_scale > 0.0 ? weight_scale : 1000.0),
+      graph_mode_(graph_mode) {}
+
+MWPMDecoder::GraphMode MWPMDecoder::parseGraphMode(const std::string& graph_mode) {
+    if (graph_mode == "simple") return GraphMode::SIMPLE;
+    return GraphMode::FULL;
+}
+
+const char* MWPMDecoder::graphModeName(GraphMode mode) {
+    switch (mode) {
+        case GraphMode::SIMPLE:
+            return "simple";
+        case GraphMode::FULL:
+        default:
+            return "full";
+    }
+}
 
 std::vector<int> MWPMDecoder::decode(const SurfaceSyndrome& syn) {
     std::vector<int> corr(code_.n(), 0);
@@ -136,7 +167,11 @@ std::vector<int> MWPMDecoder::decode(const SurfaceSyndrome& syn) {
         std::vector<int> partner;
 
         if (!defects.empty()) {
-            partner = solveMatchingWithBoundary(defects, true);
+            if (graph_mode_ == GraphMode::SIMPLE) {
+                partner = solveMatchingSimple(defects, true);
+            } else {
+                partner = solveMatchingWithBoundary(defects, true);
+            }
             const int k = static_cast<int>(defects.size());
             for (int i = 0; i < k; ++i) {
                 const int j = partner[i];
@@ -164,6 +199,7 @@ std::vector<int> MWPMDecoder::decode(const SurfaceSyndrome& syn) {
             std::ostringstream oss;
             oss << "MWPMDecoder failed to reproduce Z-check syndrome"
                 << "\n" << "d=" << d_
+                << "\n" << "mwpm_graph=" << graphModeName(graph_mode_)
                 << "\n" << "syndrome_type=Z"
                 << "\n" << "defect_coords=" << defectsString(defects)
                 << "\n" << "matching_pairs_raw=" << matchingPairsRawString(partner, static_cast<int>(defects.size()))
@@ -182,7 +218,11 @@ std::vector<int> MWPMDecoder::decode(const SurfaceSyndrome& syn) {
         std::vector<int> partner;
 
         if (!defects.empty()) {
-            partner = solveMatchingWithBoundary(defects, false);
+            if (graph_mode_ == GraphMode::SIMPLE) {
+                partner = solveMatchingSimple(defects, false);
+            } else {
+                partner = solveMatchingWithBoundary(defects, false);
+            }
             const int k = static_cast<int>(defects.size());
             for (int i = 0; i < k; ++i) {
                 const int j = partner[i];
@@ -210,6 +250,7 @@ std::vector<int> MWPMDecoder::decode(const SurfaceSyndrome& syn) {
             std::ostringstream oss;
             oss << "MWPMDecoder failed to reproduce X-check syndrome"
                 << "\n" << "d=" << d_
+                << "\n" << "mwpm_graph=" << graphModeName(graph_mode_)
                 << "\n" << "syndrome_type=X"
                 << "\n" << "defect_coords=" << defectsString(defects)
                 << "\n" << "matching_pairs_raw=" << matchingPairsRawString(partner, static_cast<int>(defects.size()))
@@ -314,11 +355,11 @@ int MWPMDecoder::DistToBoundaryZ(LatticeCoord zdef, int d) const {
 }
 
 int MWPMDecoder::DistToBoundaryX(LatticeCoord xdef, int d) const {
-    const int left = xdef.c;
-    const int right = (d - 1) - xdef.c;
-    const int bottom = xdef.r;
-    const int top = (d - 1) - xdef.r;
-    return std::min(std::min(left, right), std::min(bottom, top));
+    (void)xdef;
+    // In this project lattice representation, all X checks (including boundary vertices)
+    // are explicit rows in Hx. Matching X defects directly to a virtual boundary can break
+    // syndrome reproduction. Keep boundary edges very costly so X defects are paired internally.
+    return d * d + 1;
 }
 
 int MWPMDecoder::boundaryDistance(const Defect& d, bool plaquette_mode) const {
@@ -333,6 +374,29 @@ int MWPMDecoder::weightedBoundaryCost(const Defect& d, bool plaquette_mode) cons
     const double edge_w = std::max(0.0, weight_field_->edge_weight(u, u));
     const double cost = static_cast<double>(boundaryDistance(d, plaquette_mode)) * edge_w;
     return std::max(1, static_cast<int>(std::llround(weight_scale_ * cost)));
+}
+
+std::vector<int> MWPMDecoder::solveMatchingSimple(const std::vector<Defect>& defects,
+                                                  bool plaquette_mode) const {
+    const int k = static_cast<int>(defects.size());
+    if (k == 0) return {};
+    if ((k & 1) != 0) {
+        // Keep odd-parity syndromes valid by falling back to boundary-aware matching.
+        return solveMatchingWithBoundary(defects, plaquette_mode);
+    }
+
+    const int inf = std::numeric_limits<int>::max() / 8;
+    std::vector<std::vector<int>> w(k, std::vector<int>(k, inf));
+    for (int i = 0; i < k; ++i) {
+        w[i][i] = 0;
+        for (int j = i + 1; j < k; ++j) {
+            const int wij = weightedCost(defects[i], defects[j], plaquette_mode);
+            w[i][j] = wij;
+            w[j][i] = wij;
+        }
+    }
+
+    return BlossomMWPM::solve(w);
 }
 
 std::vector<int> MWPMDecoder::solveMatchingWithBoundary(const std::vector<Defect>& defects,

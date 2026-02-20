@@ -49,6 +49,15 @@ SurfaceCorrection MWPMPlugin::decode(const SurfaceSyndrome& syn, const SurfaceCo
     if (weight_mode != "uniform" && weight_mode != "neural" && weight_mode != "llr") {
         weight_mode = "uniform";
     }
+    std::string mwpm_graph = "full";
+    const auto gmode_it = cfg_.string_params.find("mwpm_graph");
+    if (gmode_it != cfg_.string_params.end() && !gmode_it->second.empty()) {
+        mwpm_graph = gmode_it->second;
+    }
+    if (mwpm_graph != "full" && mwpm_graph != "simple") {
+        mwpm_graph = "full";
+    }
+    const MWPMDecoder::GraphMode graph_mode = MWPMDecoder::parseGraphMode(mwpm_graph);
 
     const double p_error = cfg_.p;
     const uint64_t seed = cfg_.seed;
@@ -64,6 +73,7 @@ SurfaceCorrection MWPMPlugin::decode(const SurfaceSyndrome& syn, const SurfaceCo
         (cached_decoder_ == nullptr)
         || (cached_code_ != &code)
         || (cached_weight_mode_ != weight_mode)
+        || (cached_mwpm_graph_ != mwpm_graph)
         || (cached_p_error_ != p_error)
         || (cached_seed_ != seed)
         || (cached_weight_scale_ != mwpm_weight_scale)
@@ -76,21 +86,22 @@ SurfaceCorrection MWPMPlugin::decode(const SurfaceSyndrome& syn, const SurfaceCo
     if (rebuild) {
         if (weight_mode == "uniform") {
             cached_weight_field_.reset();
-            cached_decoder_ = std::make_unique<MWPMDecoder>(code);
+            cached_decoder_ = std::make_unique<MWPMDecoder>(code, graph_mode);
         } else if (weight_mode == "neural") {
             cached_weight_field_ = std::make_unique<NeuralWeightField>(
                 code.lattice().distance(), p_error, seed);
             cached_decoder_ = std::make_unique<MWPMDecoder>(
-                code, cached_weight_field_.get(), mwpm_weight_scale);
+                code, cached_weight_field_.get(), mwpm_weight_scale, graph_mode);
         } else {
             cached_weight_field_ = std::make_unique<LLRWeightField>(
                 llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max);
             cached_decoder_ = std::make_unique<MWPMDecoder>(
-                code, cached_weight_field_.get(), mwpm_weight_scale);
+                code, cached_weight_field_.get(), mwpm_weight_scale, graph_mode);
         }
 
         cached_code_ = &code;
         cached_weight_mode_ = weight_mode;
+        cached_mwpm_graph_ = mwpm_graph;
         cached_p_error_ = p_error;
         cached_seed_ = seed;
         cached_weight_scale_ = mwpm_weight_scale;

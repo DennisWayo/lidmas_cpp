@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 #include "WeightField.h"
 #include "UniformWeightField.h"
@@ -11,6 +12,11 @@
 
 class MWPMDecoder : public ISurfaceDecoder {
 public:
+    enum class GraphMode {
+        FULL = 0,
+        SIMPLE = 1
+    };
+
     enum class BoundarySide {
         LEFT = 0,
         RIGHT = 1,
@@ -25,8 +31,16 @@ public:
     };
 
     explicit MWPMDecoder(const SurfaceCode& code);
+    MWPMDecoder(const SurfaceCode& code, GraphMode graph_mode);
     MWPMDecoder(const SurfaceCode& code, const WeightField* weight_field, double weight_scale = 1000.0);
+    MWPMDecoder(const SurfaceCode& code,
+                const WeightField* weight_field,
+                double weight_scale,
+                GraphMode graph_mode);
     std::vector<int> decode(const SurfaceSyndrome& syn) override;
+
+    static GraphMode parseGraphMode(const std::string& graph_mode);
+    static const char* graphModeName(GraphMode mode);
 
 private:
     const SurfaceCode& code_;
@@ -35,6 +49,7 @@ private:
     const WeightField* weight_field_ = nullptr;
     bool weighted_mode_ = false;
     double weight_scale_ = 1000.0;
+    GraphMode graph_mode_ = GraphMode::FULL;
 
     int hIndex(int x, int y) const;
     int vIndex(int x, int y) const;
@@ -49,6 +64,8 @@ private:
     int DistToBoundaryZ(LatticeCoord zdef, int d) const;
     int DistToBoundaryX(LatticeCoord xdef, int d) const;
     int boundaryDistance(const Defect& d, bool plaquette_mode) const;
+    std::vector<int> solveMatchingSimple(const std::vector<Defect>& defects,
+                                         bool plaquette_mode) const;
     std::vector<int> solveMatchingWithBoundary(const std::vector<Defect>& defects,
                                                bool plaquette_mode) const;
 
