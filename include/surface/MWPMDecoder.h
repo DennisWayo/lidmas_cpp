@@ -5,13 +5,20 @@
 #include "surface/BlossomMWPM.h"
 #include "surface/ISurfaceDecoder.h"
 #include "surface/SurfaceCode.h"
+#include "surface/SyndromeGraph.h"
 
 class MWPMDecoder : public ISurfaceDecoder {
 public:
+    enum class BoundarySide {
+        LEFT = 0,
+        RIGHT = 1,
+        BOTTOM = 2,
+        TOP = 3
+    };
+
     struct Defect {
         int id = -1;
-        int x = 0;
-        int y = 0;
+        LatticeCoord rc;
         bool boundary_flag = false;
     };
 
@@ -30,14 +37,21 @@ private:
     std::vector<Defect> defectsFromPlaquetteSyndrome(const std::vector<int>& sz) const;
     std::vector<Defect> defectsFromStarSyndrome(const std::vector<int>& sx) const;
     int manhattan(const Defect& a, const Defect& b) const;
+    int DistToBoundaryZ(LatticeCoord zdef, int d) const;
+    int DistToBoundaryX(LatticeCoord xdef, int d) const;
     int boundaryDistance(const Defect& d, bool plaquette_mode) const;
     std::vector<int> solveMatchingWithBoundary(const std::vector<Defect>& defects,
                                                bool plaquette_mode) const;
 
+    std::vector<LatticeCoord> PathBetweenDefectsZ(LatticeCoord a, LatticeCoord b, int d) const;
+    std::vector<LatticeCoord> PathToBoundaryZ(LatticeCoord a, int d, BoundarySide* chosen_side) const;
+    std::vector<LatticeCoord> PathBetweenDefectsX(LatticeCoord a, LatticeCoord b, int d) const;
+    std::vector<LatticeCoord> PathToBoundaryX(LatticeCoord a, int d, BoundarySide* chosen_side) const;
+
     void applyPlaquettePairPath(const Defect& a, const Defect& b, std::vector<int>& corr) const;
     void applyStarPairPath(const Defect& a, const Defect& b, std::vector<int>& corr) const;
-    void applyPlaquetteBoundaryPath(const Defect& d, std::vector<int>& corr) const;
-    void applyStarBoundaryPath(const Defect& d, std::vector<int>& corr) const;
+    void applyPlaquetteBoundaryPath(const Defect& d, std::vector<int>& corr, BoundarySide* chosen_side) const;
+    void applyStarBoundaryPath(const Defect& d, std::vector<int>& corr, BoundarySide* chosen_side) const;
 
     bool syndromeMatches(const BinaryMatrix& H,
                          const std::vector<int>& corr,

@@ -1,5 +1,6 @@
 #include "surface/SurfacePipeline.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 SurfacePipeline::SurfacePipeline(const SurfaceCode& code)
@@ -55,4 +56,31 @@ MatchingProblem SurfacePipeline::buildMatchingProblemFromSyndrome(const SurfaceS
         mp.buildFromSyndromeGraph(buildSyndromeGraphFromSx(syn.sx));
     }
     return mp;
+}
+
+std::vector<int> SurfacePipeline::correctionBitmask(const SurfaceCorrection& corr, int n_data) {
+    std::vector<int> mask(std::max(0, n_data), 0);
+    for (int q : corr.qubit_flips) {
+        if (q >= 0 && q < n_data) mask[q] ^= 1;
+    }
+    return mask;
+}
+
+int SurfacePipeline::correctionWeight(const SurfaceCorrection& corr, int n_data) {
+    std::vector<int> mask = correctionBitmask(corr, n_data);
+    int w = 0;
+    for (int bit : mask) w += (bit & 1);
+    return w;
+}
+
+std::vector<int> SurfacePipeline::applyCorrection(const std::vector<int>& data_error,
+                                                  const SurfaceCorrection& corr,
+                                                  int n_data) {
+    std::vector<int> residual(std::max(0, n_data), 0);
+    const int copy_n = std::min(static_cast<int>(data_error.size()), n_data);
+    for (int i = 0; i < copy_n; ++i) residual[i] = (data_error[i] & 1);
+
+    const std::vector<int> mask = correctionBitmask(corr, n_data);
+    for (int i = 0; i < n_data; ++i) residual[i] ^= (mask[i] & 1);
+    return residual;
 }
