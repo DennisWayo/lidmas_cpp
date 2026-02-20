@@ -19,6 +19,12 @@ struct SurfaceThresholdConfig {
     bool monotonic_smooth = false;
     std::string weight_mode = "uniform";
     bool uf_weighted = false;
+    double llr_p_data = -1.0; // <0 => use sweep point p
+    double llr_p_meas = -1.0; // <0 => use sweep point p
+    double llr_p_idle = -1.0; // <0 => use sweep point p
+    double llr_clamp_min = 1e-12;
+    double llr_clamp_max = 1.0 - 1e-12;
+    double mwpm_weight_scale = 1000.0;
     std::string neural_weights_path;
     std::string neural_model_path;
     int min_trials = 200;

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vector>
+#include "WeightField.h"
+#include "UniformWeightField.h"
 #include "core/BinaryMatrix.h"
 #include "surface/BlossomMWPM.h"
 #include "surface/ISurfaceDecoder.h"
@@ -23,11 +25,16 @@ public:
     };
 
     explicit MWPMDecoder(const SurfaceCode& code);
+    MWPMDecoder(const SurfaceCode& code, const WeightField* weight_field, double weight_scale = 1000.0);
     std::vector<int> decode(const SurfaceSyndrome& syn) override;
 
 private:
     const SurfaceCode& code_;
     int d_ = 0;
+    UniformWeightField uniform_weight_field_;
+    const WeightField* weight_field_ = nullptr;
+    bool weighted_mode_ = false;
+    double weight_scale_ = 1000.0;
 
     int hIndex(int x, int y) const;
     int vIndex(int x, int y) const;
@@ -37,6 +44,8 @@ private:
     std::vector<Defect> defectsFromPlaquetteSyndrome(const std::vector<int>& sz) const;
     std::vector<Defect> defectsFromStarSyndrome(const std::vector<int>& sx) const;
     int manhattan(const Defect& a, const Defect& b) const;
+    int weightedCost(const Defect& a, const Defect& b, bool plaquette_mode) const;
+    int weightedBoundaryCost(const Defect& d, bool plaquette_mode) const;
     int DistToBoundaryZ(LatticeCoord zdef, int d) const;
     int DistToBoundaryX(LatticeCoord xdef, int d) const;
     int boundaryDistance(const Defect& d, bool plaquette_mode) const;

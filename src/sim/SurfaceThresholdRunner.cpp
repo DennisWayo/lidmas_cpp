@@ -854,7 +854,8 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         std::cerr << "error: cannot open output CSV '" << cfg.out_csv << "'\n";
         return 1;
     }
-    out << "distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate\n";
+    out << "distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate,"
+        << "weight_mode,llr_p_data,llr_p_meas,llr_p_idle,mwpm_weight_scale\n";
 
     const std::string decoder_name = normalizeDecoderName(cfg.decoder_name);
     if (cfg.decoder_name != decoder_name) {
@@ -877,6 +878,26 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
     threads = omp_get_max_threads();
 #endif
     std::cout << "threshold: threads=" << threads << "\n";
+    if (cfg.weight_mode == "llr") {
+        const auto p_or_sweep = [](double v) -> std::string {
+            if (v >= 0.0) {
+                std::ostringstream oss;
+                oss << v;
+                return oss.str();
+            }
+            return "<sweep_p>";
+        };
+        std::cout << "weights: mode=llr"
+                  << " p_data=" << p_or_sweep(cfg.llr_p_data)
+                  << " p_meas=" << p_or_sweep(cfg.llr_p_meas)
+                  << " p_idle=" << p_or_sweep(cfg.llr_p_idle)
+                  << " clamp=[" << cfg.llr_clamp_min << "," << cfg.llr_clamp_max << "]"
+                  << " mwpm_weight_scale=" << cfg.mwpm_weight_scale
+                  << "\n";
+    } else {
+        std::cout << "weights: mode=" << cfg.weight_mode
+                  << " mwpm_weight_scale=" << cfg.mwpm_weight_scale << "\n";
+    }
 
     const bool fixed_mode = !cfg.adaptive_enabled;
     const int resolved_max_trials = fixed_mode
@@ -908,7 +929,8 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             cfg.neural_weights_path.empty() ? cfg.neural_model_path : cfg.neural_weights_path;
         dec_cfg.int_params["distance"] = d;
         dec_cfg.int_params["seed"] = static_cast<int>(dec_cfg.seed & 0x7fffffffULL);
-        dec_cfg.int_params["uf_weighted"] = (cfg.uf_weighted || cfg.weight_mode == "neural") ? 1 : 0;
+        dec_cfg.int_params["uf_weighted"] =
+            (cfg.uf_weighted || cfg.weight_mode == "neural" || cfg.weight_mode == "llr") ? 1 : 0;
         dec_cfg.ptr_params["surface_code"] = &code;
 
         {
@@ -927,6 +949,15 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             const double p = p_values[p_index];
             const int p_key = static_cast<int>(std::llround(p * 1e6));
             dec_cfg.p = p;
+            const double llr_p_data = (cfg.llr_p_data >= 0.0) ? cfg.llr_p_data : p;
+            const double llr_p_meas = (cfg.llr_p_meas >= 0.0) ? cfg.llr_p_meas : p;
+            const double llr_p_idle = (cfg.llr_p_idle >= 0.0) ? cfg.llr_p_idle : p;
+            dec_cfg.double_params["llr_p_data"] = llr_p_data;
+            dec_cfg.double_params["llr_p_meas"] = llr_p_meas;
+            dec_cfg.double_params["llr_p_idle"] = llr_p_idle;
+            dec_cfg.double_params["llr_clamp_min"] = cfg.llr_clamp_min;
+            dec_cfg.double_params["llr_clamp_max"] = cfg.llr_clamp_max;
+            dec_cfg.double_params["mwpm_weight_scale"] = cfg.mwpm_weight_scale;
 
             PointAccum accum;
             bool ci_met = false;
@@ -1006,7 +1037,12 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                 << stats.ler_hi95 << ","
                 << stats.defect_avg << ","
                 << stats.weight_avg << ","
-                << stats.decoder_fail_rate << "\n";
+                << stats.decoder_fail_rate << ","
+                << cfg.weight_mode << ","
+                << llr_p_data << ","
+                << llr_p_meas << ","
+                << llr_p_idle << ","
+                << cfg.mwpm_weight_scale << "\n";
 
             std::cout << std::fixed
                       << "d=" << d

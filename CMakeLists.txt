@@ -19,6 +19,7 @@ add_executable(lidmas
         src/models/NeuralWeightModel.cpp
         src/UniformWeightField.cpp
         src/NeuralWeightField.cpp
+        src/LLRWeightField.cpp
         include/core/DecoderConfig.h
         include/core/IDecoderPlugin.h
         include/core/PluginRegistry.h

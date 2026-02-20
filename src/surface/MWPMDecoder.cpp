@@ -112,7 +112,19 @@ std::string matchingPairsRawString(const std::vector<int>& partner, int k) {
 
 MWPMDecoder::MWPMDecoder(const SurfaceCode& code)
     : code_(code),
-      d_(code.lattice().distance()) {}
+      d_(code.lattice().distance()),
+      weight_field_(&uniform_weight_field_),
+      weighted_mode_(false),
+      weight_scale_(1000.0) {}
+
+MWPMDecoder::MWPMDecoder(const SurfaceCode& code,
+                         const WeightField* weight_field,
+                         double weight_scale)
+    : code_(code),
+      d_(code.lattice().distance()),
+      weight_field_(weight_field ? weight_field : &uniform_weight_field_),
+      weighted_mode_(weight_field != nullptr),
+      weight_scale_(weight_scale > 0.0 ? weight_scale : 1000.0) {}
 
 std::vector<int> MWPMDecoder::decode(const SurfaceSyndrome& syn) {
     std::vector<int> corr(code_.n(), 0);
@@ -279,6 +291,19 @@ int MWPMDecoder::manhattan(const Defect& a, const Defect& b) const {
     return std::abs(a.rc.c - b.rc.c) + std::abs(a.rc.r - b.rc.r);
 }
 
+int MWPMDecoder::weightedCost(const Defect& a, const Defect& b, bool plaquette_mode) const {
+    if (!weighted_mode_) return manhattan(a, b);
+
+    const int width = plaquette_mode ? (d_ - 1) : d_;
+    auto vertexId = [width](int c, int r) { return r * width + c; };
+
+    const int u = vertexId(a.rc.c, a.rc.r);
+    const int v = vertexId(b.rc.c, b.rc.r);
+    const double edge_w = std::max(0.0, weight_field_->edge_weight(u, v));
+    const double cost = static_cast<double>(manhattan(a, b)) * edge_w;
+    return std::max(1, static_cast<int>(std::llround(weight_scale_ * cost)));
+}
+
 int MWPMDecoder::DistToBoundaryZ(LatticeCoord zdef, int d) const {
     const int f = d - 1;
     const int left = zdef.c + 1;
@@ -300,6 +325,16 @@ int MWPMDecoder::boundaryDistance(const Defect& d, bool plaquette_mode) const {
     return plaquette_mode ? DistToBoundaryZ(d.rc, d_) : DistToBoundaryX(d.rc, d_);
 }
 
+int MWPMDecoder::weightedBoundaryCost(const Defect& d, bool plaquette_mode) const {
+    if (!weighted_mode_) return boundaryDistance(d, plaquette_mode);
+
+    const int width = plaquette_mode ? (d_ - 1) : d_;
+    const int u = d.rc.r * width + d.rc.c;
+    const double edge_w = std::max(0.0, weight_field_->edge_weight(u, u));
+    const double cost = static_cast<double>(boundaryDistance(d, plaquette_mode)) * edge_w;
+    return std::max(1, static_cast<int>(std::llround(weight_scale_ * cost)));
+}
+
 std::vector<int> MWPMDecoder::solveMatchingWithBoundary(const std::vector<Defect>& defects,
                                                         bool plaquette_mode) const {
     const int k = static_cast<int>(defects.size());
@@ -312,13 +347,13 @@ std::vector<int> MWPMDecoder::solveMatchingWithBoundary(const std::vector<Defect
 
     for (int i = 0; i < k; ++i) {
         for (int j = i + 1; j < k; ++j) {
-            const int wij = manhattan(defects[i], defects[j]);
+            const int wij = weightedCost(defects[i], defects[j], plaquette_mode);
             w[i][j] = wij;
             w[j][i] = wij;
         }
 
         const int bi = k + i;
-        const int wb = boundaryDistance(defects[i], plaquette_mode);
+        const int wb = weightedBoundaryCost(defects[i], plaquette_mode);
         w[i][bi] = wb;
         w[bi][i] = wb;
     }

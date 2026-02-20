@@ -143,6 +143,10 @@ Adaptive-threshold flags:
 - `--target_ci_halfwidth=<x>`
 - `--target_rel_ci=<x>`
 - `--monotonic_smooth`
+- `--weight_mode=uniform|neural|llr`
+- `--llr_p_data=<x> --llr_p_meas=<x> --llr_p_idle=<x>`
+- `--llr_clamp_min=<x> --llr_clamp_max=<x>`
+- `--mwpm_weight_scale=<x>`
 
 CSV header:
 
@@ -151,6 +155,14 @@ distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate
 ```
 
 Per-point console output includes Wilson 95% CI and decoder fail rate.
+
+Quick v0.7.1 smoke commands:
+
+```bash
+./lidmas --surface_threshold --decoder=uf --weight_mode=uniform --threads=8 --trials=2000 --d=5 --p_start=0.01 --p_end=0.03 --p_step=0.01
+./lidmas --surface_threshold --decoder=uf --weight_mode=llr --threads=8 --trials=2000 --d=5 --p_start=0.01 --p_end=0.03 --p_step=0.01
+./lidmas --surface_threshold --decoder=mwpm --weight_mode=llr --threads=8 --trials=2000 --d=5 --p_start=0.01 --p_end=0.03 --p_step=0.01
+```
 
 ## Run: Smoke Checks
 

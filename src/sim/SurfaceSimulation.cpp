@@ -52,7 +52,8 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceSweepConfig& c
     dec_cfg.int_params["distance"] = cfg.d;
     dec_cfg.int_params["trials"] = cfg.trials;
     dec_cfg.int_params["seed"] = static_cast<int>(cfg.seed_base & 0x7fffffffULL);
-    dec_cfg.int_params["uf_weighted"] = (cfg.uf_weighted || cfg.weight_mode == "neural") ? 1 : 0;
+    dec_cfg.int_params["uf_weighted"] =
+        (cfg.uf_weighted || cfg.weight_mode == "neural" || cfg.weight_mode == "llr") ? 1 : 0;
     dec_cfg.ptr_params["surface_code"] = &code;
 
     std::unique_ptr<IDecoderPlugin> plugin_base = registry->create(decoder_name);
@@ -70,6 +71,12 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceSweepConfig& c
         long long logical_fail_sum = 0;
         const int p_key = static_cast<int>(std::llround(p * 1e6));
         dec_cfg.p = p;
+        dec_cfg.double_params["llr_p_data"] = (cfg.llr_p_data >= 0.0) ? cfg.llr_p_data : p;
+        dec_cfg.double_params["llr_p_meas"] = (cfg.llr_p_meas >= 0.0) ? cfg.llr_p_meas : p;
+        dec_cfg.double_params["llr_p_idle"] = (cfg.llr_p_idle >= 0.0) ? cfg.llr_p_idle : p;
+        dec_cfg.double_params["llr_clamp_min"] = cfg.llr_clamp_min;
+        dec_cfg.double_params["llr_clamp_max"] = cfg.llr_clamp_max;
+        dec_cfg.double_params["mwpm_weight_scale"] = cfg.mwpm_weight_scale;
         const auto point_start = std::chrono::steady_clock::now();
         surf_plugin->configure(dec_cfg);
 
