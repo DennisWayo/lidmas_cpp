@@ -10,6 +10,9 @@ void DecoderRegistry::registerDecoder(const std::string& name, CreateFn fn) {
     if (!fn) {
         throw std::invalid_argument("DecoderRegistry::registerDecoder requires valid factory");
     }
+    if (factories_.find(name) != factories_.end()) {
+        throw std::invalid_argument("DecoderRegistry::registerDecoder duplicate name: " + name);
+    }
     factories_[name] = std::move(fn);
 }
 

@@ -7,12 +7,15 @@
 #include <iostream>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
 #include "codes/LDPCGenerator.h"
+#include "core/PluginRegistry.h"
+#include "core/RegisterPlugins.h"
 #include "decoders/BPDecoderAdapter.h"
 #include "decoders/BeliefPropagation.h"
 #include "graph/GraphDiagnostics.h"
@@ -23,6 +26,7 @@
 #include "sim/LDPCSimulation.h"
 #include "sim/SmokeTests.h"
 #include "sim/SurfaceSimulation.h"
+#include "sim/SurfaceThresholdRunner.h"
 #include "utils/BSCChannel.h"
 #include "utils/CSVWriter.h"
 #include "utils/SeedUtils.h"
@@ -84,18 +88,52 @@ std::string getValuePrefix(const std::vector<std::string>& args, const std::stri
     return "";
 }
 
-void printHelp() {
+std::string joinNames(const std::vector<std::string>& names) {
+    std::string out;
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) out += "|";
+        out += names[i];
+    }
+    return out;
+}
+
+void printHelp(const PluginRegistry& plugins) {
+    const std::string surface_decoders = joinNames(plugins.list());
     std::cout << "LiDMaS+ usage\n"
               << "  ./lidmas                      Run classical LDPC BSC sweep (default)\n"
               << "  ./lidmas --qec=css_demo       Run CSS demo using BP decoder core\n"
               << "  ./lidmas --surface_demo=stub  Run surface pipeline demo (stub)\n"
               << "  ./lidmas --surface_demo=mwpm  Run surface pipeline demo (MWPM)\n"
+              << "  ./lidmas --surface_demo=uf    Run surface pipeline demo (UF placeholder)\n"
+              << "  ./lidmas --surface_demo=neural_mwpm  Run surface pipeline demo (neural-guided MWPM)\n"
+              << "  ./lidmas --surface_threshold [--decoder=" << surface_decoders << "] [--d=3,5,7]\n"
+              << "                               [--p_start=0.01 --p_end=0.15 --p_step=0.01]\n"
+              << "                               [--trials=2000 --seed=12345 --out=surface_threshold.csv]\n"
+              << "                               [--threads=<N>]\n"
+              << "                               [--min_trials=200 --max_trials=20000 --batch_trials=200]\n"
+              << "                               [--target_ci_halfwidth=0.01 --target_rel_ci=0.10]\n"
+              << "                               [--auto_threshold]\n"
+              << "                               [--estimate_threshold]\n"
+              << "                               [--scaling_fit]\n"
+              << "                               [--monotonic_smooth]\n"
+              << "  ./lidmas --smoke              Run lightweight surface smoke checks\n"
               << "\n"
               << "Flags\n"
               << "  --bp=sum-product              Use sum-product BP\n"
               << "  --bp=nms                      Use normalized min-sum BP\n"
               << "  --alpha=<value>               Set normalized min-sum alpha\n"
+              << "  --neural_model=<path>         Neural model JSON file for neural_mwpm\n"
+              << "  --min_trials=<N>              Adaptive threshold minimum trials per point\n"
+              << "  --max_trials=<N>              Adaptive threshold maximum trials per point\n"
+              << "  --batch_trials=<N>            Adaptive threshold trials per increment\n"
+              << "  --target_ci_halfwidth=<x>     Stop when absolute LER CI half-width <= x\n"
+              << "  --target_rel_ci=<x>           Stop when relative LER CI half-width <= x\n"
+              << "  --threads=<N>                 OpenMP threads for surface_threshold\n"
+              << "  --auto_threshold              Estimate threshold crossings after sweep\n"
+              << "  --estimate_threshold          Pairwise crossing estimate of p_c\n"
+              << "  --scaling_fit                Finite-size scaling fit for p_c and nu\n"
               << "  --quiet-iter-log              Disable per-iteration decode logging\n"
+              << "  surface decoders              " << surface_decoders << "\n"
               << "  --help, -h                    Show this help text\n";
 }
 
@@ -198,24 +236,48 @@ void runQecCssDemo(const RuntimeOptions& opts) {
     }
 }
 
-void runQecSurfaceDemo(const std::string& mode) {
-    const bool use_mwpm = (mode == "mwpm");
-    if (!use_mwpm && mode != "stub") {
+std::vector<int> parseDistancesCsv(const std::string& s) {
+    std::vector<int> out;
+    if (s.empty()) return out;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        if (item.empty()) continue;
+        const int d = std::stoi(item);
+        if (d >= 3 && (d % 2) == 1) out.push_back(d);
+    }
+    return out;
+}
+
+void runQecSurfaceDemo(const std::string& mode,
+                       const std::string& neural_model_path,
+                       const PluginRegistry& plugins) {
+    std::string decoder = mode;
+    if (decoder.empty()) decoder = "stub";
+    if (decoder == "mwpm_stub") decoder = "stub";
+    const std::vector<std::string> available = plugins.list();
+    if (std::find(available.begin(), available.end(), decoder) == available.end()) {
         std::cout << "Unknown surface demo mode '" << mode
                   << "', falling back to stub.\n";
+        decoder = "stub";
     }
-    std::cout << (use_mwpm ? "LiDMaS+ Surface MWPM Demo (experimental)\n"
-                           : "LiDMaS+ Surface Stub Demo (experimental)\n");
+    std::cout << (decoder == "mwpm"
+                     ? "LiDMaS+ Surface MWPM Demo (experimental)\n"
+                     : (decoder == "uf"
+                            ? "LiDMaS+ Surface UF Demo (experimental)\n"
+                            : (decoder == "neural_mwpm"
+                                   ? "LiDMaS+ Surface Neural MWPM Demo (experimental)\n"
+                                   : "LiDMaS+ Surface Stub Demo (experimental)\n")));
 
-    SurfaceStubSweepConfig cfg;
+    SurfaceSweepConfig cfg;
     cfg.d = 3;
     cfg.trials = 200;
     cfg.seed_base = 8400000;
     cfg.p_values = {0.00, 0.02, 0.05, 0.08};
+    cfg.decoder_name = decoder;
+    cfg.neural_model_path = neural_model_path;
 
-    const auto points = use_mwpm
-        ? SurfaceSimulation::run_mwpm_sweep(cfg)
-        : SurfaceSimulation::run_stub_sweep(cfg);
+    const auto points = SurfaceSimulation::run_decoder_sweep(cfg, plugins);
     for (const auto& s : points) {
         std::cout << "p=" << std::fixed << std::setprecision(3) << s.p
                   << "  defect_count_avg=" << std::setprecision(4) << s.defect_count_avg
@@ -371,9 +433,81 @@ void runSweep(const SweepConfig& cfg, const RuntimeOptions& opts) {
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args = toArgs(argc, argv);
+    PluginRegistry plugins;
+    RegisterAllPlugins(plugins);
+    const std::string neural_model_path = getValuePrefix(args, "--neural_model=");
     if (hasFlag(args, "--help") || hasFlag(args, "-h")) {
-        printHelp();
+        printHelp(plugins);
         return 0;
+    }
+    if (hasFlag(args, "--smoke")) {
+        const bool ok = run_smoke_tests();
+        return ok ? 0 : 1;
+    }
+    if (hasFlag(args, "--surface_threshold")) {
+        SurfaceThresholdConfig cfg;
+        bool adaptive_requested = false;
+        const std::string decoder = getValuePrefix(args, "--decoder=");
+        if (!decoder.empty()) cfg.decoder_name = decoder;
+        const std::string d_csv = getValuePrefix(args, "--d=");
+        if (!d_csv.empty()) {
+            const auto dlist = parseDistancesCsv(d_csv);
+            if (!dlist.empty()) cfg.distances = dlist;
+        }
+        const std::string p_start = getValuePrefix(args, "--p_start=");
+        if (!p_start.empty()) cfg.p_start = std::stod(p_start);
+        const std::string p_end = getValuePrefix(args, "--p_end=");
+        if (!p_end.empty()) cfg.p_end = std::stod(p_end);
+        const std::string p_step = getValuePrefix(args, "--p_step=");
+        if (!p_step.empty()) cfg.p_step = std::stod(p_step);
+        const std::string trials = getValuePrefix(args, "--trials=");
+        if (!trials.empty()) {
+            cfg.trials = std::stoi(trials);
+            cfg.trials_explicit = true;
+        }
+        const std::string seed = getValuePrefix(args, "--seed=");
+        if (!seed.empty()) cfg.seed = static_cast<uint64_t>(std::stoull(seed));
+        const std::string out = getValuePrefix(args, "--out=");
+        if (!out.empty()) cfg.out_csv = out;
+        if (hasFlag(args, "--monotonic_smooth")) cfg.monotonic_smooth = true;
+        const std::string min_trials = getValuePrefix(args, "--min_trials=");
+        if (!min_trials.empty()) {
+            cfg.min_trials = std::stoi(min_trials);
+            adaptive_requested = true;
+        }
+        const std::string max_trials = getValuePrefix(args, "--max_trials=");
+        if (!max_trials.empty()) {
+            cfg.max_trials = std::stoi(max_trials);
+            adaptive_requested = true;
+        }
+        const std::string batch_trials = getValuePrefix(args, "--batch_trials=");
+        if (!batch_trials.empty()) {
+            cfg.batch_trials = std::stoi(batch_trials);
+            adaptive_requested = true;
+        }
+        const std::string target_abs = getValuePrefix(args, "--target_ci_halfwidth=");
+        if (!target_abs.empty()) {
+            cfg.target_ci_halfwidth = std::stod(target_abs);
+            adaptive_requested = true;
+        }
+        const std::string target_rel = getValuePrefix(args, "--target_rel_ci=");
+        if (!target_rel.empty()) {
+            cfg.target_rel_ci = std::stod(target_rel);
+            adaptive_requested = true;
+        }
+        const std::string threads = getValuePrefix(args, "--threads=");
+        if (!threads.empty()) {
+            cfg.threads = std::max(1, std::stoi(threads));
+        }
+        if (hasFlag(args, "--auto_threshold")) {
+            cfg.auto_threshold = true;
+            cfg.estimate_threshold = true; // backward-compatible alias
+        }
+        if (hasFlag(args, "--estimate_threshold")) cfg.estimate_threshold = true;
+        if (hasFlag(args, "--scaling_fit")) cfg.scaling_fit = true;
+        cfg.adaptive_enabled = adaptive_requested;
+        cfg.neural_model_path = neural_model_path;
+        return SurfaceThresholdRunner::run(cfg, plugins);
     }
 
     const RuntimeOptions opts = parseOptions(argc, argv);
@@ -385,7 +519,7 @@ int main(int argc, char** argv) {
     const std::string surface_demo_mode = getValuePrefix(args, "--surface_demo=");
     if (has_surface_demo_flag || !surface_demo_mode.empty()) {
         const std::string mode = surface_demo_mode.empty() ? "stub" : surface_demo_mode;
-        runQecSurfaceDemo(mode);
+        runQecSurfaceDemo(mode, neural_model_path, plugins);
         return 0;
     }
 
@@ -395,11 +529,19 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (qec_mode == "surface_stub") {
-        runQecSurfaceDemo("stub");
+        runQecSurfaceDemo("stub", neural_model_path, plugins);
         return 0;
     }
     if (qec_mode == "surface_mwpm") {
-        runQecSurfaceDemo("mwpm");
+        runQecSurfaceDemo("mwpm", neural_model_path, plugins);
+        return 0;
+    }
+    if (qec_mode == "surface_uf") {
+        runQecSurfaceDemo("uf", neural_model_path, plugins);
+        return 0;
+    }
+    if (qec_mode == "surface_neural_mwpm") {
+        runQecSurfaceDemo("neural_mwpm", neural_model_path, plugins);
         return 0;
     }
 

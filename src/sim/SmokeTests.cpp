@@ -11,6 +11,8 @@
 #include "qec/QuantumCSSSimulator.h"
 #include "sim/CSSSimulation.h"
 #include "sim/LDPCSimulation.h"
+#include "sim/SurfaceSimulation.h"
+#include "sim/SurfaceThresholdRunner.h"
 #include "surface/MWPMDecoder.h"
 #include "surface/SurfaceCode.h"
 #include "utils/BSCChannel.h"
@@ -142,6 +144,137 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
         }
     }
 
+    // Deterministic regression for planar boundary matching on d=5.
+    {
+        SurfaceCode scode(5);
+        MWPMDecoder mwpm(scode);
+
+        SurfaceSyndrome syn;
+        syn.sz.assign(scode.mz(), 0);
+        syn.sz[2] = 1; // row-major defect at (r=0,c=2) on (d-1)x(d-1)=4x4 Z-check grid.
+
+        std::vector<int> corr;
+        try {
+            corr = mwpm.decode(syn);
+        } catch (const std::exception& ex) {
+            std::cerr << "[selftest] Surface MWPM d=5 single-defect decode threw: "
+                      << ex.what() << "\n";
+            return false;
+        }
+
+        auto syn_out = scode.Hz().multiply(corr);
+        for (int& v : syn_out) v &= 1;
+        if (syn_out.size() != syn.sz.size()) {
+            std::cerr << "[selftest] Surface MWPM d=5 single-defect size mismatch\n";
+            return false;
+        }
+        for (size_t i = 0; i < syn_out.size(); ++i) {
+            if ((syn_out[i] & 1) != (syn.sz[i] & 1)) {
+                std::cerr << "[selftest] Surface MWPM d=5 single-defect syndrome mismatch\n";
+                return false;
+            }
+        }
+    }
+
     std::cout << "[selftest] PASS\n";
+    return true;
+}
+
+bool run_smoke_tests() {
+    std::cout << "[smoke] running...\n";
+
+    SurfaceSweepConfig cfg;
+    cfg.d = 3;
+    cfg.trials = 100;
+    cfg.seed_base = 12345;
+    cfg.p_values = {0.0};
+    cfg.decoder_name = "mwpm";
+
+    const auto points = SurfaceSimulation::run_decoder_sweep(cfg);
+    if (points.empty()) {
+        std::cerr << "[smoke] empty surface result set\n";
+        return false;
+    }
+    if (points.front().logical_fail_rate > 1e-12) {
+        std::cerr << "[smoke] expected LER=0 at p=0 for d=3 mwpm, got "
+                  << points.front().logical_fail_rate << "\n";
+        return false;
+    }
+
+    SurfaceSweepConfig mwpm_cfg;
+    mwpm_cfg.d = 3;
+    mwpm_cfg.trials = 100;
+    mwpm_cfg.seed_base = 32345;
+    mwpm_cfg.p_values = {0.05};
+    mwpm_cfg.decoder_name = "mwpm";
+    const auto mwpm_points = SurfaceSimulation::run_decoder_sweep(mwpm_cfg);
+
+    SurfaceSweepConfig neural_cfg = mwpm_cfg;
+    neural_cfg.decoder_name = "neural_mwpm";
+    neural_cfg.neural_model_path = "/tmp/lidmas_nonexistent_model.json";
+    const auto neural_points = SurfaceSimulation::run_decoder_sweep(neural_cfg);
+
+    if (mwpm_points.size() != neural_points.size()) {
+        std::cerr << "[smoke] mwpm vs neural_mwpm output size mismatch\n";
+        return false;
+    }
+    for (size_t i = 0; i < mwpm_points.size(); ++i) {
+        if (std::abs(mwpm_points[i].correction_weight_avg - neural_points[i].correction_weight_avg) > 1e-12 ||
+            std::abs(mwpm_points[i].logical_fail_rate - neural_points[i].logical_fail_rate) > 1e-12) {
+            std::cerr << "[smoke] neural_mwpm fallback mismatch against mwpm at p="
+                      << mwpm_points[i].p << "\n";
+            return false;
+        }
+    }
+
+    SurfaceSweepConfig uf_cfg;
+    uf_cfg.d = 5;
+    uf_cfg.trials = 200;
+    uf_cfg.seed_base = 22345;
+    uf_cfg.p_values = {0.0, 0.01};
+    uf_cfg.decoder_name = "uf";
+
+    const auto uf_points = SurfaceSimulation::run_decoder_sweep(uf_cfg);
+    if (uf_points.size() < 2) {
+        std::cerr << "[smoke] UF sweep did not return expected points\n";
+        return false;
+    }
+    if (!near_zero(uf_points[0].correction_weight_avg)) {
+        std::cerr << "[smoke] expected UF correction_weight_avg=0 at p=0, got "
+                  << uf_points[0].correction_weight_avg << "\n";
+        return false;
+    }
+
+    const auto& uf_small = uf_points[1];
+    if (uf_small.defect_count_avg > 1e-12) {
+        if (!(uf_small.correction_weight_avg > 0.0)) {
+            std::cerr << "[smoke] expected UF correction_weight_avg>0 at small p when defects exist\n";
+            return false;
+        }
+        if (std::abs(uf_small.correction_weight_avg - uf_small.defect_count_avg) <= 1e-12) {
+            std::cerr << "[smoke] UF correction_weight_avg should not be identically defect_count_avg at small p\n";
+            return false;
+        }
+    }
+
+    SurfaceThresholdConfig thr_cfg;
+    thr_cfg.decoder_name = "mwpm";
+    thr_cfg.distances = {3};
+    thr_cfg.p_start = 0.01;
+    thr_cfg.p_end = 0.01;
+    thr_cfg.p_step = 0.01;
+    thr_cfg.trials = 50;
+    thr_cfg.trials_explicit = true;
+    thr_cfg.min_trials = 50;
+    thr_cfg.max_trials = 50;
+    thr_cfg.batch_trials = 50;
+    thr_cfg.adaptive_enabled = true;
+    thr_cfg.out_csv = "/tmp/lidmas_surface_threshold_smoke.csv";
+    if (SurfaceThresholdRunner::run(thr_cfg) != 0) {
+        std::cerr << "[smoke] surface threshold smoke run failed\n";
+        return false;
+    }
+
+    std::cout << "[smoke] PASS\n";
     return true;
 }

@@ -4,6 +4,41 @@
 #include <cstdlib>
 #include <stdexcept>
 
+std::vector<LatticeCoord> GetZDefects(const std::vector<int>& syndrome_sz, int d) {
+    if (d < 2) {
+        throw std::invalid_argument("GetZDefects requires d >= 2");
+    }
+    const int f = d - 1;
+    if (static_cast<int>(syndrome_sz.size()) != f * f) {
+        throw std::invalid_argument("GetZDefects syndrome size mismatch");
+    }
+
+    std::vector<LatticeCoord> out;
+    out.reserve(syndrome_sz.size() / 4 + 1);
+    for (int idx = 0; idx < static_cast<int>(syndrome_sz.size()); ++idx) {
+        if ((syndrome_sz[idx] & 1) == 0) continue;
+        out.push_back(LatticeCoord{idx / f, idx % f});
+    }
+    return out;
+}
+
+std::vector<LatticeCoord> GetXDefects(const std::vector<int>& syndrome_sx, int d) {
+    if (d < 1) {
+        throw std::invalid_argument("GetXDefects requires d >= 1");
+    }
+    if (static_cast<int>(syndrome_sx.size()) != d * d) {
+        throw std::invalid_argument("GetXDefects syndrome size mismatch");
+    }
+
+    std::vector<LatticeCoord> out;
+    out.reserve(syndrome_sx.size() / 4 + 1);
+    for (int idx = 0; idx < static_cast<int>(syndrome_sx.size()); ++idx) {
+        if ((syndrome_sx[idx] & 1) == 0) continue;
+        out.push_back(LatticeCoord{idx / d, idx % d});
+    }
+    return out;
+}
+
 SyndromeGraph::SyndromeGraph(int width, int height)
     : width_(width),
       height_(height) {}

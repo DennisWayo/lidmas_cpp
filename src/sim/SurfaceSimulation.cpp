@@ -1,29 +1,61 @@
 #include "sim/SurfaceSimulation.h"
 
+#include <chrono>
 #include <cmath>
 #include <memory>
+#include <stdexcept>
 
 #include "core/DecoderConfig.h"
-#include "core/DecoderRegistry.h"
-#include "core/RegisterDecoders.h"
+#include "core/PluginRegistry.h"
+#include "core/RegisterPlugins.h"
 #include "qec/LogicalOperators.h"
+#include "surface/ISurfaceDecoderPlugin.h"
 #include "surface/SurfaceCode.h"
 #include "surface/SurfacePipeline.h"
 #include "surface/SurfaceSyndrome.h"
 
 namespace {
 
-std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceStubSweepConfig& cfg) {
+std::string normalizeSurfaceDecoderName(const std::string& name) {
+    if (name.empty()) return "stub";
+    if (name == "stub" || name == "mwpm_stub") return "stub";
+    if (name == "mwpm") return "mwpm";
+    if (name == "uf") return "uf";
+    if (name == "neural_mwpm") return "neural_mwpm";
+    return name;
+}
+
+std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceSweepConfig& cfg,
+                                                     const PluginRegistry* reg_in) {
     SurfaceCode code(cfg.d);
     SurfacePipeline pipeline(code);
 
-    DecoderRegistry registry;
-    registerBuiltInDecoders(registry);
+    PluginRegistry local_registry;
+    const PluginRegistry* registry = reg_in;
+    if (registry == nullptr) {
+        RegisterAllPlugins(local_registry);
+        registry = &local_registry;
+    }
+
+    const std::string decoder_name = normalizeSurfaceDecoderName(cfg.decoder_name);
 
     DecoderConfig dec_cfg;
+    dec_cfg.decoder_name = decoder_name;
+    dec_cfg.distance = cfg.d;
+    dec_cfg.trials = cfg.trials;
+    dec_cfg.seed = cfg.seed_base;
+    dec_cfg.string_params["decoder_name"] = decoder_name;
+    dec_cfg.string_params["neural_model"] = cfg.neural_model_path;
+    dec_cfg.int_params["distance"] = cfg.d;
+    dec_cfg.int_params["trials"] = cfg.trials;
+    dec_cfg.int_params["seed"] = static_cast<int>(cfg.seed_base & 0x7fffffffULL);
     dec_cfg.ptr_params["surface_code"] = &code;
-    const std::string decoder_name = cfg.decoder_name.empty() ? "mwpm_stub" : cfg.decoder_name;
-    std::unique_ptr<IDecoder> decoder = registry.create(decoder_name, dec_cfg);
+
+    std::unique_ptr<IDecoderPlugin> plugin_base = registry->create(decoder_name);
+    auto* surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
+    if (surf_plugin == nullptr) {
+        throw std::runtime_error("Selected plugin is not a surface decoder: " + decoder_name);
+    }
 
     std::vector<SurfaceStubPointStats> out;
     out.reserve(cfg.p_values.size());
@@ -33,6 +65,9 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceStubSweepConfi
         long long correction_weight_sum = 0;
         long long logical_fail_sum = 0;
         const int p_key = static_cast<int>(std::llround(p * 1e6));
+        dec_cfg.p = p;
+        const auto point_start = std::chrono::steady_clock::now();
+        surf_plugin->configure(dec_cfg);
 
         for (int t = 0; t < cfg.trials; ++t) {
             const auto syn = SurfaceSyndrome::sample(
@@ -40,20 +75,13 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceStubSweepConfi
             const MatchingProblem mp = pipeline.buildMatchingProblemFromSz(syn.sz);
             defect_sum += mp.numDefects();
 
-            DecodeRequest req;
-            req.syndrome = &syn.sz;
-            req.p_error = p;
-            const DecodeResult dec = decoder->decode(req);
+            // Keep surface demo behavior identical: decode against sz only.
+            SurfaceSyndrome decode_syn;
+            decode_syn.sz = syn.sz;
+            const SurfaceCorrection corr = surf_plugin->decode(decode_syn, code);
 
-            int corr_weight = 0;
-            for (int bit : dec.correction) corr_weight += (bit & 1);
-            correction_weight_sum += corr_weight;
-
-            std::vector<int> residual_ex(code.n(), 0);
-            for (int i = 0; i < code.n(); ++i) {
-                const int corr_bit = (i < static_cast<int>(dec.correction.size())) ? (dec.correction[i] & 1) : 0;
-                residual_ex[i] = (syn.ex[i] ^ corr_bit) & 1;
-            }
+            correction_weight_sum += SurfacePipeline::correctionWeight(corr, code.n());
+            const std::vector<int> residual_ex = SurfacePipeline::applyCorrection(syn.ex, corr, code.n());
 
             const bool logical_fail =
                 (dot_mod2(residual_ex, code.logicalXSupport()) != 0) ||
@@ -67,6 +95,9 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceStubSweepConfi
         s.defect_count_avg = defect_sum / denom;
         s.correction_weight_avg = correction_weight_sum / denom;
         s.logical_fail_rate = logical_fail_sum / denom;
+        const auto point_end = std::chrono::steady_clock::now();
+        const double elapsed_ms = std::chrono::duration<double, std::milli>(point_end - point_start).count();
+        s.avg_runtime_ms = elapsed_ms / denom;
         out.push_back(s);
     }
 
@@ -75,14 +106,23 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceStubSweepConfi
 
 } // namespace
 
-std::vector<SurfaceStubPointStats> SurfaceSimulation::run_stub_sweep(const SurfaceStubSweepConfig& cfg) {
-    SurfaceStubSweepConfig cfg_local = cfg;
-    cfg_local.decoder_name = "mwpm_stub";
-    return run_surface_sweep(cfg_local);
+std::vector<SurfaceStubPointStats> SurfaceSimulation::run_decoder_sweep(const SurfaceSweepConfig& cfg) {
+    return run_surface_sweep(cfg, nullptr);
 }
 
-std::vector<SurfaceStubPointStats> SurfaceSimulation::run_mwpm_sweep(const SurfaceStubSweepConfig& cfg) {
-    SurfaceStubSweepConfig cfg_local = cfg;
+std::vector<SurfaceStubPointStats> SurfaceSimulation::run_decoder_sweep(const SurfaceSweepConfig& cfg,
+                                                                        const PluginRegistry& reg) {
+    return run_surface_sweep(cfg, &reg);
+}
+
+std::vector<SurfaceStubPointStats> SurfaceSimulation::run_stub_sweep(const SurfaceSweepConfig& cfg) {
+    SurfaceSweepConfig cfg_local = cfg;
+    cfg_local.decoder_name = "stub";
+    return run_surface_sweep(cfg_local, nullptr);
+}
+
+std::vector<SurfaceStubPointStats> SurfaceSimulation::run_mwpm_sweep(const SurfaceSweepConfig& cfg) {
+    SurfaceSweepConfig cfg_local = cfg;
     cfg_local.decoder_name = "mwpm";
-    return run_surface_sweep(cfg_local);
+    return run_surface_sweep(cfg_local, nullptr);
 }

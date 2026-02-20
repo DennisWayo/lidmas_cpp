@@ -2,6 +2,14 @@
 
 #include <vector>
 
+struct LatticeCoord {
+    int r = 0;
+    int c = 0;
+};
+
+std::vector<LatticeCoord> GetZDefects(const std::vector<int>& syndrome_sz, int d);
+std::vector<LatticeCoord> GetXDefects(const std::vector<int>& syndrome_sx, int d);
+
 class SyndromeGraph {
 public:
     struct Node {

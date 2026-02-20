@@ -1,9 +1,16 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 
 struct DecoderConfig {
+    std::string decoder_name;
+    int distance = 0;
+    int trials = 0;
+    uint64_t seed = 0;
+    double p = 0.0;
+
     int max_iters = 80;
     double alpha = 0.8;
     double damping = 0.0;
