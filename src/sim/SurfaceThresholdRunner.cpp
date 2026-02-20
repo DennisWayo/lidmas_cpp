@@ -855,12 +855,18 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         return 1;
     }
     out << "distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate,"
-        << "weight_mode,llr_p_data,llr_p_meas,llr_p_idle,mwpm_weight_scale\n";
+        << "weight_mode,llr_p_data,llr_p_meas,llr_p_idle,mwpm_weight_scale,mwpm_graph\n";
 
     const std::string decoder_name = normalizeDecoderName(cfg.decoder_name);
     if (cfg.decoder_name != decoder_name) {
         std::cout << "WARNING: unknown decoder '" << cfg.decoder_name
                   << "', falling back to mwpm\n";
+    }
+    std::string mwpm_graph = cfg.mwpm_graph;
+    if (mwpm_graph != "full" && mwpm_graph != "simple") {
+        std::cout << "WARNING: unknown mwpm_graph '" << cfg.mwpm_graph
+                  << "', falling back to full\n";
+        mwpm_graph = "full";
     }
 
     const std::vector<double> p_values = makePGrid(cfg.p_start, cfg.p_end, cfg.p_step);
@@ -893,10 +899,13 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                   << " p_idle=" << p_or_sweep(cfg.llr_p_idle)
                   << " clamp=[" << cfg.llr_clamp_min << "," << cfg.llr_clamp_max << "]"
                   << " mwpm_weight_scale=" << cfg.mwpm_weight_scale
+                  << " mwpm_graph=" << mwpm_graph
                   << "\n";
     } else {
         std::cout << "weights: mode=" << cfg.weight_mode
-                  << " mwpm_weight_scale=" << cfg.mwpm_weight_scale << "\n";
+                  << " mwpm_weight_scale=" << cfg.mwpm_weight_scale
+                  << " mwpm_graph=" << mwpm_graph
+                  << "\n";
     }
 
     const bool fixed_mode = !cfg.adaptive_enabled;
@@ -924,6 +933,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         dec_cfg.seed = cfg.seed + static_cast<uint64_t>(d) * 1000000ULL;
         dec_cfg.string_params["decoder_name"] = decoder_name;
         dec_cfg.string_params["weight_mode"] = cfg.weight_mode;
+        dec_cfg.string_params["mwpm_graph"] = mwpm_graph;
         dec_cfg.string_params["neural_model"] = cfg.neural_model_path;
         dec_cfg.string_params["neural_weights"] =
             cfg.neural_weights_path.empty() ? cfg.neural_model_path : cfg.neural_weights_path;
@@ -1042,7 +1052,8 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                 << llr_p_data << ","
                 << llr_p_meas << ","
                 << llr_p_idle << ","
-                << cfg.mwpm_weight_scale << "\n";
+                << cfg.mwpm_weight_scale << ","
+                << mwpm_graph << "\n";
 
             std::cout << std::fixed
                       << "d=" << d

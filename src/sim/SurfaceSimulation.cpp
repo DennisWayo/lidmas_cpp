@@ -38,6 +38,10 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceSweepConfig& c
     }
 
     const std::string decoder_name = normalizeSurfaceDecoderName(cfg.decoder_name);
+    std::string mwpm_graph = cfg.mwpm_graph;
+    if (mwpm_graph != "full" && mwpm_graph != "simple") {
+        mwpm_graph = "full";
+    }
 
     DecoderConfig dec_cfg;
     dec_cfg.decoder_name = decoder_name;
@@ -46,6 +50,7 @@ std::vector<SurfaceStubPointStats> run_surface_sweep(const SurfaceSweepConfig& c
     dec_cfg.seed = cfg.seed_base;
     dec_cfg.string_params["decoder_name"] = decoder_name;
     dec_cfg.string_params["weight_mode"] = cfg.weight_mode;
+    dec_cfg.string_params["mwpm_graph"] = mwpm_graph;
     dec_cfg.string_params["neural_model"] = cfg.neural_model_path;
     dec_cfg.string_params["neural_weights"] =
         cfg.neural_weights_path.empty() ? cfg.neural_model_path : cfg.neural_weights_path;

@@ -135,8 +135,18 @@ void NeuralMWPMPlugin::configure(const DecoderConfig& cfg) {
 }
 
 SurfaceCorrection NeuralMWPMPlugin::decode(const SurfaceSyndrome& syn, const SurfaceCode& code) {
-    if (!model_loaded_) {
-        MWPMDecoder base(code);
+    std::string mwpm_graph = "full";
+    const auto gmode_it = cfg_.string_params.find("mwpm_graph");
+    if (gmode_it != cfg_.string_params.end() && !gmode_it->second.empty()) {
+        mwpm_graph = gmode_it->second;
+    }
+    if (mwpm_graph != "full" && mwpm_graph != "simple") {
+        mwpm_graph = "full";
+    }
+    const MWPMDecoder::GraphMode graph_mode = MWPMDecoder::parseGraphMode(mwpm_graph);
+
+    if (!model_loaded_ || graph_mode == MWPMDecoder::GraphMode::SIMPLE) {
+        MWPMDecoder base(code, graph_mode);
         return bitmaskToCorrection(base.decode(syn));
     }
 

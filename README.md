@@ -144,6 +144,7 @@ Adaptive-threshold flags:
 - `--target_rel_ci=<x>`
 - `--monotonic_smooth`
 - `--weight_mode=uniform|neural|llr`
+- `--mwpm_graph=full|simple` (default `full`, v0.8 full syndrome graph)
 - `--llr_p_data=<x> --llr_p_meas=<x> --llr_p_idle=<x>`
 - `--llr_clamp_min=<x> --llr_clamp_max=<x>`
 - `--mwpm_weight_scale=<x>`
@@ -151,7 +152,7 @@ Adaptive-threshold flags:
 CSV header:
 
 ```text
-distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate
+distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate,weight_mode,llr_p_data,llr_p_meas,llr_p_idle,mwpm_weight_scale,mwpm_graph
 ```
 
 Per-point console output includes Wilson 95% CI and decoder fail rate.

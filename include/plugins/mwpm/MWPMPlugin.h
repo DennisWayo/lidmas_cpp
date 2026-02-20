@@ -19,6 +19,7 @@ private:
     DecoderConfig cfg_;
     const SurfaceCode* cached_code_ = nullptr;
     std::string cached_weight_mode_ = "uniform";
+    std::string cached_mwpm_graph_ = "full";
     uint64_t cached_seed_ = 0;
     double cached_p_error_ = -1.0;
     double cached_weight_scale_ = 1000.0;

@@ -142,7 +142,7 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
     // Surface MWPM sanity checks (deterministic, no RNG).
     {
         SurfaceCode scode(3);
-        MWPMDecoder mwpm(scode);
+        MWPMDecoder mwpm(scode, MWPMDecoder::GraphMode::FULL);
 
         // Case 1: single-qubit X error should produce syndrome and be corrected.
         SurfaceSyndrome syn1;
@@ -197,7 +197,7 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
     // Deterministic regression for planar boundary matching on d=5.
     {
         SurfaceCode scode(5);
-        MWPMDecoder mwpm(scode);
+        MWPMDecoder mwpm(scode, MWPMDecoder::GraphMode::FULL);
 
         SurfaceSyndrome syn;
         syn.sz.assign(scode.mz(), 0);
@@ -226,6 +226,47 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
         }
     }
 
+    // Randomized fixed-seed full-graph syndrome-reproduction checks on d=3 and d=5.
+    {
+        const std::vector<int> ds{3, 5};
+        const std::vector<double> ps{0.01, 0.05};
+        for (int d : ds) {
+            SurfaceCode scode(d);
+            MWPMDecoder mwpm(scode, MWPMDecoder::GraphMode::FULL);
+            for (double p : ps) {
+                for (int t = 0; t < 12; ++t) {
+                    const uint64_t seed = 8100000ULL
+                        + static_cast<uint64_t>(d) * 10000ULL
+                        + static_cast<uint64_t>(std::llround(p * 1000.0)) * 100ULL
+                        + static_cast<uint64_t>(t);
+                    const SurfaceSyndrome syn = SurfaceSyndrome::sample(scode, p, p, seed);
+
+                    SurfaceSyndrome syn_z;
+                    syn_z.sz = syn.sz;
+                    const auto corr_z = mwpm.decode(syn_z);
+                    auto got_sz = scode.Hz().multiply(corr_z);
+                    for (int& v : got_sz) v &= 1;
+                    if (got_sz != syn.sz) {
+                        std::cerr << "[selftest] Surface MWPM full-graph Z-syndrome mismatch at d="
+                                  << d << " p=" << p << " t=" << t << "\n";
+                        return false;
+                    }
+
+                    SurfaceSyndrome syn_x;
+                    syn_x.sx = syn.sx;
+                    const auto corr_x = mwpm.decode(syn_x);
+                    auto got_sx = scode.Hx().multiply(corr_x);
+                    for (int& v : got_sx) v &= 1;
+                    if (got_sx != syn.sx) {
+                        std::cerr << "[selftest] Surface MWPM full-graph X-syndrome mismatch at d="
+                                  << d << " p=" << p << " t=" << t << "\n";
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
     std::cout << "[selftest] PASS\n";
     return true;
 }
@@ -233,12 +274,50 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
 bool run_smoke_tests() {
     std::cout << "[smoke] running...\n";
 
+    // Deterministic full-graph MWPM syndrome reproduction checks.
+    for (int d : {3, 5}) {
+        SurfaceCode scode(d);
+        MWPMDecoder mwpm(scode, MWPMDecoder::GraphMode::FULL);
+        for (double p : {0.01, 0.05}) {
+            for (int t = 0; t < 6; ++t) {
+                const uint64_t seed = 9100000ULL
+                    + static_cast<uint64_t>(d) * 10000ULL
+                    + static_cast<uint64_t>(std::llround(p * 1000.0)) * 100ULL
+                    + static_cast<uint64_t>(t);
+                const SurfaceSyndrome syn = SurfaceSyndrome::sample(scode, p, p, seed);
+
+                SurfaceSyndrome syn_z;
+                syn_z.sz = syn.sz;
+                const auto corr_z = mwpm.decode(syn_z);
+                auto got_sz = scode.Hz().multiply(corr_z);
+                for (int& v : got_sz) v &= 1;
+                if (got_sz != syn.sz) {
+                    std::cerr << "[smoke] full-graph MWPM Z-syndrome mismatch at d="
+                              << d << " p=" << p << " t=" << t << "\n";
+                    return false;
+                }
+
+                SurfaceSyndrome syn_x;
+                syn_x.sx = syn.sx;
+                const auto corr_x = mwpm.decode(syn_x);
+                auto got_sx = scode.Hx().multiply(corr_x);
+                for (int& v : got_sx) v &= 1;
+                if (got_sx != syn.sx) {
+                    std::cerr << "[smoke] full-graph MWPM X-syndrome mismatch at d="
+                              << d << " p=" << p << " t=" << t << "\n";
+                    return false;
+                }
+            }
+        }
+    }
+
     SurfaceSweepConfig cfg;
     cfg.d = 3;
     cfg.trials = 100;
     cfg.seed_base = 12345;
     cfg.p_values = {0.0};
     cfg.decoder_name = "mwpm";
+    cfg.mwpm_graph = "full";
 
     const auto points = SurfaceSimulation::run_decoder_sweep(cfg);
     if (points.empty()) {
@@ -257,6 +336,7 @@ bool run_smoke_tests() {
     mwpm_cfg.seed_base = 32345;
     mwpm_cfg.p_values = {0.05};
     mwpm_cfg.decoder_name = "mwpm";
+    mwpm_cfg.mwpm_graph = "full";
     const auto mwpm_points = SurfaceSimulation::run_decoder_sweep(mwpm_cfg);
 
     SurfaceSweepConfig neural_cfg = mwpm_cfg;
@@ -283,6 +363,7 @@ bool run_smoke_tests() {
     uf_cfg.seed_base = 22345;
     uf_cfg.p_values = {0.0, 0.01};
     uf_cfg.decoder_name = "uf";
+    uf_cfg.mwpm_graph = "full";
 
     const auto uf_points = SurfaceSimulation::run_decoder_sweep(uf_cfg);
     if (uf_points.size() < 2) {
@@ -320,6 +401,7 @@ bool run_smoke_tests() {
     thr_cfg.batch_trials = 50;
     thr_cfg.adaptive_enabled = true;
     thr_cfg.out_csv = "/tmp/lidmas_surface_threshold_smoke.csv";
+    thr_cfg.mwpm_graph = "full";
     if (SurfaceThresholdRunner::run(thr_cfg) != 0) {
         std::cerr << "[smoke] surface threshold smoke run failed\n";
         return false;
