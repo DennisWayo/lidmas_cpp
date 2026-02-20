@@ -34,7 +34,8 @@ Temporary/
 
 # Experiment outputs
 *.csv
-surface_decoder_failure_dump.txt
+*.txt
+!CMakeLists.txt
 *.log
 
 # macOS
