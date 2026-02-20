@@ -32,9 +32,10 @@ clion-*
 Testing/
 Temporary/
 
-# CSV experiment outputs
+# Experiment outputs
 *.csv
-*.txt
+surface_decoder_failure_dump.txt
+*.log
 
 # macOS
 .DS_Store
