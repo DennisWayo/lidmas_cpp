@@ -1,269 +1,172 @@
 <p align="center">
   <img src="https://img.shields.io/badge/C%2B%2B-20-black?logo=c%2B%2B&logoColor=white" />
   <img src="https://img.shields.io/badge/build-CMake-black?logo=cmake&logoColor=white" />
-  <img src="https://img.shields.io/github/v/tag/DennisWayo/lidmas_cpp?color=black&label=latest" />
   <img src="https://img.shields.io/github/license/DennisWayo/lidmas_cpp?color=black" />
-  <img src="https://img.shields.io/badge/status-research--prototype-black" />
 </p>
 
 # LiDMaS+
 
 **Logical Injection & Decoding Modeling System**
 
-LiDMaS+ is a C++20 research codebase for classical LDPC belief propagation and CSS/surface-code-oriented extension layers.
+LiDMaS+ is a C++ research simulator for quantum error-correction studies, with a focus on
+surface-code threshold experiments under both discrete Pauli noise and hybrid
+continuous-variable (CV) + discrete noise models.
 
-## Current Version
+## Statement of Need
 
-**v0.6 — Surface MWPM decoder (boundary-aware) + threshold harness**
+Benchmarking decoder behavior and threshold trends requires reproducible, scriptable,
+and inspectable simulation pipelines. LiDMaS+ provides:
 
-## What This Repository Includes
+- deterministic Monte Carlo runs with explicit seed control,
+- multiple decoders under a common interface,
+- confidence-interval-aware threshold outputs,
+- publication-ready CSV and figure workflows in `examples/`.
 
-- Validated LDPC BP engine (sum-product + normalized min-sum)
-- PEG-based LDPC construction and Tanner graph tooling
-- Monte Carlo sweeps with BER/FER/iteration diagnostics
-- CSS-ready decoding interfaces
-- Planar surface-code infrastructure and dedicated surface runners
-- Surface decoder plugin registry (`stub`, `mwpm`, `uf`, `neural_mwpm`)
-- Surface threshold harness with OpenMP, confidence intervals, and threshold analysis
+This makes it suitable for method development, reproducibility appendices, and
+comparative decoder studies.
 
-## Repository Layout
+## Core Capabilities
 
-```text
-include/
-  core/          # Binary matrix primitives
-  decoders/      # Belief propagation decoder
-  graph/         # Tanner graph + diagnostics
-  qec/           # CSS code/decoder + logical helpers
-  surface/       # Surface lattice/code/syndrome/decoder
-src/
-  main.cpp       # LDPC sweep executable (lidmas)
-  surface_main.cpp
-```
+- Surface-code simulation with configurable code distance and trial counts.
+- Decoder plugins: `mwpm`, `uf`, `neural_mwpm`.
+- Noise modes:
+  - `pauli`: sweep logical error rate versus physical Pauli error rate `p`.
+  - `hybrid`: sweep logical error rate versus CV displacement scale `sigma` using GKP digitization.
+- Optional threshold analysis tools (crossing estimates and scaling fits).
+- Reproducible example suite under `examples/`.
+
+## Requirements
+
+- C++20 compiler
+- CMake >= 3.16
+- Optional: OpenMP for parallel threshold runs
+- Optional (for plots): Python 3 with `matplotlib` and `pandas`
 
 ## Build
 
 ```bash
-mkdir -p build
-cd build
-cmake ..
-make
+cmake -S . -B build
+cmake --build build -j
 ```
 
-OpenMP is optional. If unavailable, the project still builds and runs.
+Primary executable:
 
-## Run: LDPC Sweep (Existing Path)
+- `build/lidmas`
 
-This is the existing validated sweep path and remains unchanged.
+## Quick Start
+
+Show CLI help:
 
 ```bash
-./lidmas
+./build/lidmas --help
 ```
 
-Optional flags:
+Run deterministic smoke test:
 
 ```bash
-./lidmas --bp=sum-product
-./lidmas --bp=nms --alpha=0.8
-./lidmas --quiet-iter-log
+./build/lidmas --smoke
 ```
 
-## Run: Surface Code (v0.4 Layer)
-
-Distance-3 zero-noise sanity:
+Run a Pauli threshold sweep:
 
 ```bash
-./lidmas_surface --d=3 --trials=200 --px=0 --pz=0
-```
-
-Small logical-failure sweep:
-
-```bash
-./lidmas_surface --d=3 --sweep --p_start=0.01 --p_end=0.10 --p_step=0.01 --trials=500
-```
-
-Typical output fields:
-
-- `logicalX_fail_rate`
-- `logicalZ_fail_rate`
-- `logical_fail_rate`
-- `avg_iters_x`
-- `avg_iters_z`
-- `commutation_ok` (checks `Hx * Hz^T == 0 mod 2`)
-
-## Run: Surface Demo Modes (v0.6)
-
-Use the main executable:
-
-```bash
-./lidmas --surface_demo=stub
-./lidmas --surface_demo=mwpm
-./lidmas --surface_demo=uf
-./lidmas --surface_demo=neural_mwpm --neural_model=path/to/model.json
-```
-
-Printed fields:
-
-- `defect_count_avg`
-- `correction_weight_avg`
-- `logical_fail_rate`
-
-`uf` remains experimental.
-
-## Run: Surface Threshold Harness (v0.6)
-
-```bash
-./lidmas --surface_threshold \
+./build/lidmas --surface_threshold \
+  --mode=pauli \
   --decoder=mwpm \
   --d=3,5,7 \
   --p_start=0.01 --p_end=0.15 --p_step=0.01 \
   --trials=2000 \
-  --threads=8 \
-  --seed=12345 \
+  --seed=1337 \
   --out=surface_threshold.csv
 ```
 
-Supported decoder options:
+Run a hybrid CV sweep:
 
-- `mwpm`
-- `stub`
-- `uf`
-- `neural_mwpm` (with optional `--neural_model=<path>`)
+```bash
+./build/lidmas --surface_threshold \
+  --mode=hybrid \
+  --decoder=mwpm \
+  --d=3,5,7 \
+  --sigma_start=0.05 --sigma_end=0.60 --sigma_step=0.05 \
+  --trials=2000 \
+  --seed=1337 \
+  --out=surface_threshold.csv
+```
 
-Optional analysis flags:
+Neural decoder note:
 
-- `--estimate_threshold` (pairwise crossing estimate)
-- `--scaling_fit` (finite-size scaling fit for `p_c` and `nu`)
-- `--auto_threshold` (compat alias for threshold estimate)
+- `--decoder=neural_mwpm` requires `--neural_model=<path>`.
 
-Adaptive-threshold flags:
+## Reproducible Examples
 
-- `--min_trials=<N>`
-- `--max_trials=<N>`
-- `--batch_trials=<N>`
-- `--target_ci_halfwidth=<x>`
-- `--target_rel_ci=<x>`
-- `--monotonic_smooth`
-- `--weight_mode=uniform|neural|llr`
-- `--mwpm_graph=full|simple` (default `full`, v0.8 full syndrome graph)
-- `--llr_p_data=<x> --llr_p_meas=<x> --llr_p_idle=<x>`
-- `--llr_clamp_min=<x> --llr_clamp_max=<x>`
-- `--mwpm_weight_scale=<x>`
+The `examples/` directory contains ready-to-run scripts for smoke checks,
+Pauli/hybrid thresholds, scaling workflows, decoder comparison, and plotting.
 
-CSV header:
+Setup once:
+
+```bash
+./examples/setup_env.sh
+```
+
+Run a minimal end-to-end check:
+
+```bash
+bash examples/quick_smoke/run.sh
+```
+
+Generated artifacts are written to:
+
+- `examples/results/<example_name>/`
+
+## Output Schema
+
+Threshold CSV output uses:
+
+- `mode,distance,sigma,pauli_p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate,mwpm_weight_scale,mwpm_graph,timestamp`
+
+## Validation
+
+For quick validation in local or CI environments:
+
+```bash
+./build/lidmas --smoke
+```
+
+## Project Layout
 
 ```text
-distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate,weight_mode,llr_p_data,llr_p_meas,llr_p_idle,mwpm_weight_scale,mwpm_graph
+include/   # public headers and interfaces
+src/       # simulator and decoder implementations
+examples/  # reproducible runs and plotting scripts
 ```
 
-Per-point console output includes Wilson 95% CI and decoder fail rate.
+## Release Notes
 
-Quick v0.7.1 smoke commands:
+Detailed release notes and version-specific changes are tracked in Git tags and
+GitHub Releases.
 
-```bash
-./lidmas --surface_threshold --decoder=uf --weight_mode=uniform --threads=8 --trials=2000 --d=5 --p_start=0.01 --p_end=0.03 --p_step=0.01
-./lidmas --surface_threshold --decoder=uf --weight_mode=llr --threads=8 --trials=2000 --d=5 --p_start=0.01 --p_end=0.03 --p_step=0.01
-./lidmas --surface_threshold --decoder=mwpm --weight_mode=llr --threads=8 --trials=2000 --d=5 --p_start=0.01 --p_end=0.03 --p_step=0.01
+## Citation
+
+If you use LiDMaS+ in academic work, cite the software release used for your
+experiments (tag + commit hash). If a JOSS/arXiv record is available for your
+release, cite that record directly.
+
+Suggested software citation format:
+
+```text
+Wayo, D. (Year). LiDMaS+ (Version X.Y.Z) [Computer software].
+https://github.com/DennisWayo/lidmas_cpp
 ```
 
-## Run: Smoke Checks
+## License
 
-```bash
-./lidmas --smoke
-```
+This project is released under the MIT License (see `LICENSE`).
 
-This runs a lightweight surface sanity check (`d=3`, `p=0`, `mwpm`) and expects `LER=0`.
+## Contributing
 
-## Run: Quantum CSS Demo (v0.5 Layer)
+Issues and pull requests are welcome. Please include:
 
-Use the LDPC binary with the optional QEC mode:
-
-```bash
-./lidmas --qec=css_demo
-```
-
-This runs a small CSS Monte Carlo demo and prints:
-
-- `LER_total`
-- `LER_X`
-- `LER_Z`
-- `avg_iter_X`
-- `avg_iter_Z`
-
-## Version History
-
-### v0.6 — Surface MWPM decoder (boundary-aware) + threshold harness
-
-Adds boundary-aware surface MWPM matching and a stabilized threshold harness while preserving validated LDPC and CSS paths.
-
-- `MWPMDecoder` boundary matching for planar syndromes (defect-to-boundary support)
-- Surface decoder plugins in `lidmas`: `--surface_demo=stub|mwpm|uf|neural_mwpm`
-- Surface threshold harness with OpenMP support and `--threads`
-- Wilson 95% confidence intervals and per-point `decoder_fail_rate`
-- Optional threshold analysis: `--estimate_threshold`, `--scaling_fit`, `--auto_threshold`
-- Failure capture to `surface_decoder_failure_dump.txt` on first decoder exception
-
-### v0.5 — Quantum CSS Monte Carlo Engine
-
-Adds a dedicated quantum noise and syndrome-simulation layer while preserving existing LDPC sweep behavior.
-
-- `PauliChannel` for independent X/Z and depolarizing sampling
-- Reusable CSS syndrome extraction helper
-- Logical-failure helper utilities (`LogicalPair`, mod-2 overlap checks)
-- `QuantumCSSSimulator` for dual BP decoding (X/Z), residual checks, and QEC metrics
-- Optional CLI demo mode: `--qec=css_demo`
-
-### v0.4 — Surface Code Infrastructure
-
-Additive planar surface-code layer built on top of existing BP/CSS abstractions.
-
-- `SurfaceLattice`, `SurfaceCode`, `SurfaceSyndrome`, `SurfaceDecoder`
-- Independent X/Z decoding path using existing BP decoder
-- Canonical logical-support overlap checks for logical-failure estimation
-- Separate executable: `lidmas_surface`
-- Existing LDPC sweep behavior preserved
-
-### v0.3 — CSS-Ready BP Engine
-
-Transition from classical LDPC decoding toward quantum error correction.
-
-- Modular CSS code structure (X/Z parity separation)
-- CSS syndrome handling layer
-- Logical operator scaffolding
-- Classical BP decoder reusable for X and Z decoding
-- Clean architectural separation for future QEC extensions
-
-This version prepares LiDMaS+ for quantum code integration (CSS, surface codes, and beyond).
-
-### v0.2 — Validated LDPC Belief Propagation Engine
-
-Research-grade LDPC BP implementation with validation diagnostics.
-
-- PEG-generated regular LDPC codes (`n=1000`, `m=500`)
-- Sum-product and normalized min-sum decoding
-- Explicit all-zero codeword channel simulation
-- Monotonic FER waterfall validation
-- Parity satisfaction rate and max-iteration hit diagnostics
-- OpenMP-parallel Monte Carlo sweeps
-- Reproducible CMake build
-
-Validated FER transition example:
-
-- `p=0.06` → `FER=0.01`
-- `p=0.07` → `FER=0.115`
-- `p=0.08` → `FER=0.355`
-- `p=0.09` → `FER=0.755`
-- `p=0.10` → `FER=0.965`
-
-This version marks the first experimentally validated decoding engine.
-
-### v0.1 — Baseline Belief Propagation Prototype
-
-Initial LDPC decoding framework.
-
-- BinaryMatrix core implementation
-- Tanner graph construction
-- Classical min-sum belief propagation
-- Basic Monte Carlo bit-flip (BSC) simulation
-- Metrics: success rate and average iterations
-
-This version established the foundational decoding architecture.
+- a clear problem statement,
+- reproduction steps,
+- expected versus observed behavior,
+- and, where possible, a minimal test or script.
