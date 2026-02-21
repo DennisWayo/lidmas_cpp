@@ -86,6 +86,8 @@ add_executable(lidmas
         src/surface/SurfaceDecoderAdapter.cpp
         include/surface/SurfacePipeline.h
         src/surface/SurfacePipeline.cpp
+        src/surface/ScalingAnalysis.h
+        src/surface/ScalingAnalysis.cpp
         include/surface/MWPMStubDecoder.h
         src/surface/MWPMStubDecoder.cpp
         include/surface/BlossomMWPM.h

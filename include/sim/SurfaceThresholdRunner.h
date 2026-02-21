@@ -38,6 +38,21 @@ struct SurfaceThresholdConfig {
     bool estimate_threshold = false;
     bool scaling_fit = false;
     int threads = 0; // <=0: use OpenMP runtime/environment default
+    int scaling_bootstrap = 200;
+    uint64_t scaling_seed = 12345;
+    bool pc_min_set = false;
+    bool pc_max_set = false;
+    bool nu_min_set = false;
+    bool nu_max_set = false;
+    double pc_min = 0.0;
+    double pc_max = 0.0;
+    double nu_min = 0.5;
+    double nu_max = 3.0;
+    int grid_pc = 61;
+    int grid_nu = 51;
+    double ler_smooth_eps = 0.0;
+    std::string scaling_report = "surface_scaling_report.md";
+    std::string scaling_json = "surface_scaling_summary.json";
 };
 
 class SurfaceThresholdRunner {

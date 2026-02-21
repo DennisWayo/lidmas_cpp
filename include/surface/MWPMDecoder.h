@@ -68,6 +68,8 @@ private:
                                          bool plaquette_mode) const;
     std::vector<int> solveMatchingWithBoundary(const std::vector<Defect>& defects,
                                                bool plaquette_mode) const;
+    std::vector<int> solveMatchingWithBoundaryGreedy(const std::vector<Defect>& defects,
+                                                     bool plaquette_mode) const;
 
     std::vector<LatticeCoord> PathBetweenDefectsZ(LatticeCoord a, LatticeCoord b, int d) const;
     std::vector<LatticeCoord> PathToBoundaryZ(LatticeCoord a, int d, BoundarySide* chosen_side) const;

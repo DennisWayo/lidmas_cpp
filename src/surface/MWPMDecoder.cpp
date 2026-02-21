@@ -405,6 +405,11 @@ std::vector<int> MWPMDecoder::solveMatchingWithBoundary(const std::vector<Defect
     if (k == 0) return {};
 
     const int n = 2 * k;
+    constexpr int kExactNodeCap = 24;
+    if (n > kExactNodeCap) {
+        return solveMatchingWithBoundaryGreedy(defects, plaquette_mode);
+    }
+
     const int inf = std::numeric_limits<int>::max() / 8;
     std::vector<std::vector<int>> w(n, std::vector<int>(n, inf));
     for (int i = 0; i < n; ++i) w[i][i] = 0;
@@ -432,6 +437,92 @@ std::vector<int> MWPMDecoder::solveMatchingWithBoundary(const std::vector<Defect
     }
 
     return BlossomMWPM::solve(w);
+}
+
+std::vector<int> MWPMDecoder::solveMatchingWithBoundaryGreedy(const std::vector<Defect>& defects,
+                                                              bool plaquette_mode) const {
+    const int k = static_cast<int>(defects.size());
+    const int n = 2 * k;
+    std::vector<int> partner(n, -1);
+    std::vector<unsigned char> used(static_cast<size_t>(k), 0);
+
+    auto better = [](int cost_a, int i_a, int j_a, bool b_a,
+                     int cost_b, int i_b, int j_b, bool b_b) -> bool {
+        if (cost_a != cost_b) return cost_a < cost_b;
+        if (b_a != b_b) return b_a;
+        if (i_a != i_b) return i_a < i_b;
+        return j_a < j_b;
+    };
+
+    int matched = 0;
+    while (matched < k) {
+        int best_cost = std::numeric_limits<int>::max() / 8;
+        int best_i = -1;
+        int best_j = -1;
+        bool best_is_boundary = false;
+
+        for (int i = 0; i < k; ++i) {
+            if (used[static_cast<size_t>(i)] != 0) continue;
+
+            const int wb = weightedBoundaryCost(defects[i], plaquette_mode);
+            if (best_i < 0 || better(wb, i, -1, true, best_cost, best_i, best_j, best_is_boundary)) {
+                best_cost = wb;
+                best_i = i;
+                best_j = -1;
+                best_is_boundary = true;
+            }
+
+            for (int j = i + 1; j < k; ++j) {
+                if (used[static_cast<size_t>(j)] != 0) continue;
+                const int wij = weightedCost(defects[i], defects[j], plaquette_mode);
+                if (best_i < 0 || better(wij, i, j, false, best_cost, best_i, best_j, best_is_boundary)) {
+                    best_cost = wij;
+                    best_i = i;
+                    best_j = j;
+                    best_is_boundary = false;
+                }
+            }
+        }
+
+        if (best_i < 0) {
+            throw std::invalid_argument("MWPMDecoder greedy boundary fallback failed to find candidate");
+        }
+
+        if (best_is_boundary) {
+            const int bi = k + best_i;
+            partner[best_i] = bi;
+            partner[bi] = best_i;
+            used[static_cast<size_t>(best_i)] = 1;
+            matched += 1;
+        } else {
+            if (best_j < 0 || used[static_cast<size_t>(best_j)] != 0) {
+                throw std::invalid_argument("MWPMDecoder greedy boundary fallback selected invalid defect pair");
+            }
+            partner[best_i] = best_j;
+            partner[best_j] = best_i;
+            used[static_cast<size_t>(best_i)] = 1;
+            used[static_cast<size_t>(best_j)] = 1;
+            matched += 2;
+        }
+    }
+
+    std::vector<int> free_boundary;
+    free_boundary.reserve(static_cast<size_t>(k));
+    for (int i = 0; i < k; ++i) {
+        const int bi = k + i;
+        if (partner[bi] < 0) free_boundary.push_back(bi);
+    }
+    if ((free_boundary.size() & 1U) != 0U) {
+        throw std::invalid_argument("MWPMDecoder greedy boundary fallback produced odd free boundary count");
+    }
+    for (size_t i = 0; i + 1 < free_boundary.size(); i += 2) {
+        const int a = free_boundary[i];
+        const int b = free_boundary[i + 1];
+        partner[a] = b;
+        partner[b] = a;
+    }
+
+    return partner;
 }
 
 std::vector<LatticeCoord> MWPMDecoder::PathBetweenDefectsZ(LatticeCoord a, LatticeCoord b, int d) const {
