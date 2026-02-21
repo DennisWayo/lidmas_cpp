@@ -69,6 +69,9 @@ add_executable(lidmas
         src/qec/PauliChannelAdapter.cpp
         src/qec/LogicalOperators.cpp
         src/qec/QuantumCSSSimulator.cpp
+        src/cv/gaussian_noise.hpp
+        src/gkp/gkp_digitizer.hpp
+        src/hybrid/hybrid_engine.hpp
         include/surface/SurfaceLattice.h
         src/surface/SurfaceLattice.cpp
         include/surface/SurfaceCode.h

@@ -108,7 +108,9 @@ void printHelp(const PluginRegistry& plugins) {
               << "  ./lidmas --surface_demo=neural_mwpm  Run surface pipeline demo (neural-guided MWPM)\n"
               << "  ./lidmas --surface_threshold [--decoder=" << surface_decoders << "] [--d=3,5,7]\n"
               << "                               [--p_start=0.01 --p_end=0.15 --p_step=0.01]\n"
+              << "                               [--sigma_start=0.05 --sigma_end=0.60 --sigma_step=0.05]\n"
               << "                               [--trials=2000 --seed=12345 --out=surface_threshold.csv]\n"
+              << "                               [--mode=pauli|hybrid]\n"
               << "                               [--threads=<N>]\n"
               << "                               [--min_trials=200 --max_trials=20000 --batch_trials=200]\n"
               << "                               [--target_ci_halfwidth=0.01 --target_rel_ci=0.10]\n"
@@ -133,6 +135,11 @@ void printHelp(const PluginRegistry& plugins) {
               << "  --llr_clamp_max=<x>           LLR probability clamp max (default 1-1e-12)\n"
               << "  --mwpm_weight_scale=<x>       MWPM weight scaling factor (default 1000)\n"
               << "  --mwpm_graph=<full|simple>    MWPM graph topology mode (default full)\n"
+              << "  --mode=<pauli|hybrid>         Surface error model mode (default pauli)\n"
+              << "  --sigma_start=<x>             Hybrid sigma sweep start\n"
+              << "  --sigma_end=<x>               Hybrid sigma sweep end\n"
+              << "  --sigma_step=<x>              Hybrid sigma sweep step\n"
+              << "  --cv_sigma=<x>                Single-point hybrid sigma (legacy alias)\n"
               << "  --min_trials=<N>              Adaptive threshold minimum trials per point\n"
               << "  --max_trials=<N>              Adaptive threshold maximum trials per point\n"
               << "  --batch_trials=<N>            Adaptive threshold trials per increment\n"
@@ -502,6 +509,16 @@ int main(int argc, char** argv) {
     const bool uf_weighted = hasFlag(args, "--uf_weighted");
     const std::string neural_weights_path = getValuePrefix(args, "--neural_weights=");
     const std::string neural_model_path = getValuePrefix(args, "--neural_model=");
+    std::string surface_mode = getValuePrefix(args, "--mode=");
+    if (surface_mode.empty()) surface_mode = "pauli";
+    if (surface_mode == "discrete") surface_mode = "pauli"; // backward-compatible alias
+    if (surface_mode != "pauli" && surface_mode != "hybrid") {
+        std::cout << "Unknown --mode='" << surface_mode
+                  << "', falling back to pauli.\n";
+        surface_mode = "pauli";
+    }
+    const std::string cv_sigma_arg = getValuePrefix(args, "--cv_sigma=");
+    const double cv_sigma = cv_sigma_arg.empty() ? 0.0 : std::max(0.0, std::stod(cv_sigma_arg));
     if (hasFlag(args, "--help") || hasFlag(args, "-h")) {
         printHelp(plugins);
         return 0;
@@ -521,11 +538,17 @@ int main(int argc, char** argv) {
             if (!dlist.empty()) cfg.distances = dlist;
         }
         const std::string p_start = getValuePrefix(args, "--p_start=");
+        const std::string sigma_start = getValuePrefix(args, "--sigma_start=");
         if (!p_start.empty()) cfg.p_start = std::stod(p_start);
+        if (!sigma_start.empty()) cfg.sigma_start = std::stod(sigma_start);
         const std::string p_end = getValuePrefix(args, "--p_end=");
+        const std::string sigma_end = getValuePrefix(args, "--sigma_end=");
         if (!p_end.empty()) cfg.p_end = std::stod(p_end);
+        if (!sigma_end.empty()) cfg.sigma_end = std::stod(sigma_end);
         const std::string p_step = getValuePrefix(args, "--p_step=");
+        const std::string sigma_step = getValuePrefix(args, "--sigma_step=");
         if (!p_step.empty()) cfg.p_step = std::stod(p_step);
+        if (!sigma_step.empty()) cfg.sigma_step = std::stod(sigma_step);
         const std::string trials = getValuePrefix(args, "--trials=");
         if (!trials.empty()) {
             cfg.trials = std::stoi(trials);
@@ -545,6 +568,38 @@ int main(int argc, char** argv) {
         cfg.llr_clamp_min = llr_clamp_min;
         cfg.llr_clamp_max = llr_clamp_max;
         cfg.mwpm_weight_scale = mwpm_weight_scale;
+        cfg.mode = (surface_mode == "hybrid") ? NoiseMode::Hybrid : NoiseMode::Pauli;
+
+        const bool p_sweep_provided = !p_start.empty() || !p_end.empty() || !p_step.empty();
+        const bool sigma_sweep_provided = !sigma_start.empty() || !sigma_end.empty() || !sigma_step.empty();
+        if (p_sweep_provided && sigma_sweep_provided) {
+            std::cerr << "error: cannot provide both p sweep and sigma sweep arguments\n";
+            return 1;
+        }
+        if (cfg.mode == NoiseMode::Hybrid) {
+            if (p_sweep_provided) {
+                std::cerr << "error: hybrid mode does not allow --p_start/--p_end/--p_step\n";
+                return 1;
+            }
+            if (!sigma_sweep_provided && cv_sigma_arg.empty()) {
+                std::cerr << "error: hybrid mode requires --sigma_start/--sigma_end/--sigma_step "
+                          << "(or legacy --cv_sigma for single-point run)\n";
+                return 1;
+            }
+            if (sigma_sweep_provided) {
+                cfg.cv_sigma = cfg.sigma_start;
+                if (!cv_sigma_arg.empty()) {
+                    std::cout << "WARNING: ignoring --cv_sigma because sigma sweep is explicitly set\n";
+                }
+            } else {
+                cfg.cv_sigma = cv_sigma;
+                cfg.sigma_start = cfg.cv_sigma;
+                cfg.sigma_end = cfg.cv_sigma;
+                cfg.sigma_step = 1.0;
+            }
+        } else {
+            cfg.cv_sigma = 0.0;
+        }
         const std::string min_trials = getValuePrefix(args, "--min_trials=");
         if (!min_trials.empty()) {
             cfg.min_trials = std::stoi(min_trials);
