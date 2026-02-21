@@ -3,6 +3,8 @@
 # =========================
 cmake-build-*/
 build/
+.venv/
+.cache/
 out/
 *.dir/
 
@@ -45,3 +47,7 @@ threshold_plot.png
 
 # OpenMP artifacts
 *.omp
+
+# Python
+__pycache__/
+*.pyc

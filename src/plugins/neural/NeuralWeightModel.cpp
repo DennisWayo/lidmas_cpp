@@ -114,6 +114,20 @@ bool NeuralWeightModel::loadFromJson(const std::string& path) {
     (void)parseStringField(text, "type", type);
     if (type != "linear") return false;
 
+    double alpha = 1.0;
+    const bool has_alpha = parseDoubleField(text, "alpha", alpha);
+    double beta = 0.0;
+    const bool has_beta = parseDoubleField(text, "beta", beta);
+    if (has_alpha || has_beta) {
+        if (!std::isfinite(alpha) || !std::isfinite(beta)) return false;
+        type_ = type;
+        output_mode_ = OutputMode::AbsoluteWeight;
+        alpha_ = alpha;
+        beta_ = beta;
+        enabled_ = true;
+        return true;
+    }
+
     double bias = 1.0;
     (void)parseDoubleField(text, "bias", bias);
 
@@ -130,6 +144,7 @@ bool NeuralWeightModel::loadFromJson(const std::string& path) {
     if (clamp_lo > clamp_hi) std::swap(clamp_lo, clamp_hi);
 
     type_ = type;
+    output_mode_ = OutputMode::Scale;
     bias_ = bias;
     w_manhattan_ = w_manhattan;
     w_dx_ = w_dx;
@@ -141,11 +156,30 @@ bool NeuralWeightModel::loadFromJson(const std::string& path) {
     return true;
 }
 
+double NeuralWeightModel::predictGuidedWeight(double base_weight,
+                                              double manhattan,
+                                              double dx,
+                                              double dy,
+                                              double near_boundary) const {
+    if (!enabled_) return base_weight;
+
+    if (output_mode_ == OutputMode::AbsoluteWeight) {
+        const double raw = alpha_ * manhattan + beta_;
+        if (!std::isfinite(raw)) return base_weight;
+        return std::max(0.0, raw);
+    }
+
+    const double scale = predictScale(manhattan, dx, dy, near_boundary);
+    if (!std::isfinite(scale)) return base_weight;
+    return std::max(0.0, base_weight * scale);
+}
+
 double NeuralWeightModel::predictScale(double manhattan,
                                        double dx,
                                        double dy,
                                        double near_boundary) const {
     if (!enabled_) return 1.0;
+    if (output_mode_ == OutputMode::AbsoluteWeight) return 1.0;
 
     double raw = bias_
         + w_manhattan_ * manhattan

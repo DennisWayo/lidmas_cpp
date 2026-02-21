@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -77,8 +78,12 @@ int guidedWeight(const NeuralWeightModel& model,
     const double dx = features.size() > 0 ? features[0] : 0.0;
     const double dy = features.size() > 1 ? features[1] : 0.0;
     const double near_boundary = features.size() > 2 ? features[2] : 0.0;
-    const double scale = model.predictScale(dx + dy, dx, dy, near_boundary);
-    const double guided = std::max(0.0, static_cast<double>(original_weight) * scale);
+    const double guided = model.predictGuidedWeight(
+        static_cast<double>(original_weight),
+        static_cast<double>(original_weight),
+        dx,
+        dy,
+        near_boundary);
     return static_cast<int>(std::llround(guided));
 }
 
@@ -118,18 +123,37 @@ void NeuralMWPMPlugin::configure(const DecoderConfig& cfg) {
     const auto it = cfg.string_params.find("neural_model");
     if (it != cfg.string_params.end()) new_path = it->second;
 
-    if (new_path != model_path_) {
+    const bool path_changed = (new_path != model_path_);
+    if (path_changed) {
         model_path_ = new_path;
-        model_loaded_ = model_.loadFromJson(model_path_);
+        model_loaded_ = false;
         status_reported_ = false;
     }
 
-    if (!status_reported_) {
-        if (model_loaded_) {
-            std::cout << "Neural MWPM: model=ENABLED (" << model_path_ << ")\n";
-        } else {
-            std::cout << "Neural MWPM: model=DISABLED (no/invalid model file)\n";
+    if (model_path_.empty()) {
+        const char* msg = "ERROR: neural_mwpm requires --neural_model <path>";
+        std::cerr << msg << "\n";
+        throw std::runtime_error(msg);
+    }
+    {
+        std::ifstream in(model_path_);
+        if (!in.good()) {
+            const char* msg = "ERROR: neural_mwpm requires --neural_model <path>";
+            std::cerr << msg << "\n";
+            throw std::runtime_error(msg);
         }
+    }
+
+    if (path_changed || !model_loaded_) {
+        model_loaded_ = model_.loadFromJson(model_path_);
+    }
+    if (!model_loaded_) {
+        std::cerr << "ERROR: failed to load neural model '" << model_path_ << "'\n";
+        throw std::runtime_error("failed to load neural model");
+    }
+
+    if (!status_reported_) {
+        std::cout << "Neural MWPM: model=ENABLED (" << model_path_ << ")\n";
         status_reported_ = true;
     }
 }
@@ -145,7 +169,10 @@ SurfaceCorrection NeuralMWPMPlugin::decode(const SurfaceSyndrome& syn, const Sur
     }
     const MWPMDecoder::GraphMode graph_mode = MWPMDecoder::parseGraphMode(mwpm_graph);
 
-    if (!model_loaded_ || graph_mode == MWPMDecoder::GraphMode::SIMPLE) {
+    if (!model_loaded_) {
+        throw std::runtime_error("ERROR: neural_mwpm requires --neural_model <path>");
+    }
+    if (graph_mode == MWPMDecoder::GraphMode::SIMPLE) {
         MWPMDecoder base(code, graph_mode);
         return bitmaskToCorrection(base.decode(syn));
     }

@@ -5,6 +5,11 @@
 class NeuralWeightModel {
 public:
     bool loadFromJson(const std::string& path);
+    double predictGuidedWeight(double base_weight,
+                               double manhattan,
+                               double dx,
+                               double dy,
+                               double near_boundary) const;
     double predictScale(double manhattan, double dx, double dy, double near_boundary) const;
 
     bool enabled() const { return enabled_; }
@@ -12,8 +17,16 @@ public:
     double clampHi() const { return clamp_hi_; }
 
 private:
+    enum class OutputMode {
+        Scale,
+        AbsoluteWeight
+    };
+
     bool enabled_ = false;
+    OutputMode output_mode_ = OutputMode::Scale;
     std::string type_ = "linear";
+    double alpha_ = 1.0;
+    double beta_ = 0.0;
     double bias_ = 1.0;
     double w_manhattan_ = 0.0;
     double w_dx_ = 0.0;
