@@ -1,11 +1,6 @@
 # Examples
 
-Reproducible experiment entry points for LiDMaS, designed for:
-
-- JOSS-style reproducibility sections
-- arXiv supplementary workflows
-- public GitHub benchmarking and demos
-
+Reproducible experiment entry points for LiDMaS+
 ## Setup (One Time)
 
 ```bash
@@ -33,15 +28,6 @@ LIDMAS_SKIP_PY_DEPS=1 ./examples/hybrid_threshold/run.sh
 - `failure_debug/`: stress run and failure-dump capture workflow.
 - `plot_only/`: publication-grade plotting from existing CSV files.
 
-## High-Quality Publishable Figures
-
-Each main run script attempts to generate:
-
-- `*.png` (600 dpi)
-- `*.pdf`
-- `*.svg`
-
-using `examples/plot_only/publish_plot.py` and `examples/plot_only/publication.mplstyle`.
 
 ## Central Results Folder
 
