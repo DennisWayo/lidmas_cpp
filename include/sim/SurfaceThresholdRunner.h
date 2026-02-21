@@ -6,8 +6,18 @@
 
 class PluginRegistry;
 
+enum class NoiseMode {
+    Pauli,
+    Hybrid
+};
+
 struct SurfaceThresholdConfig {
     std::string decoder_name = "mwpm";
+    NoiseMode mode = NoiseMode::Pauli;
+    double cv_sigma = 0.0;
+    double sigma_start = 0.05;
+    double sigma_end = 0.60;
+    double sigma_step = 0.05;
     std::vector<int> distances{3, 5, 7};
     double p_start = 0.01;
     double p_end = 0.15;

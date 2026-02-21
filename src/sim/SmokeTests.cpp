@@ -8,8 +8,11 @@
 #include <string>
 
 #include "codes/LDPCGenerator.h"
+#include "cv/gaussian_noise.hpp"
 #include "decoders/BPDecoderAdapter.h"
+#include "gkp/gkp_digitizer.hpp"
 #include "graph/TannerGraph.h"
+#include "hybrid/hybrid_engine.hpp"
 #include "qec/PauliChannelAdapter.h"
 #include "qec/QuantumCSSSimulator.h"
 #include "sim/CSSSimulation.h"
@@ -498,6 +501,37 @@ bool run_smoke_tests() {
     if (!(nu >= scale_cfg.nu_min - 1e-9 && nu <= scale_cfg.nu_max + 1e-9)) {
         std::cerr << "[smoke] nu out of requested bounds\n";
         return false;
+    }
+
+    {
+        HybridEngine hybrid_zero(3, 0.0, 4400001ULL);
+        for (int t = 0; t < 16; ++t) {
+            hybrid_zero.run_trial();
+            const auto& r = hybrid_zero.last_result();
+            if (r.decoder_failed || r.logical_failure || r.defect_count != 0 || r.correction_weight != 0) {
+                std::cerr << "[smoke] hybrid sigma=0 expected no flips/failures\n";
+                return false;
+            }
+        }
+    }
+
+    {
+        GaussianNoise noise_hi(5.0, 4400002ULL);
+        GKPDigitizer digitizer;
+        int flips = 0;
+        constexpr int samples = 2000;
+        for (int i = 0; i < samples; ++i) {
+            const auto [dq, dp] = noise_hi.sample();
+            const PauliError pe = digitizer.digitize(dq, dp);
+            if (pe.x_flip) flips += 1;
+            if (pe.z_flip) flips += 1;
+        }
+        const double flip_rate = static_cast<double>(flips) / static_cast<double>(2 * samples);
+        if (flip_rate < 0.25) {
+            std::cerr << "[smoke] hybrid large-sigma flip rate unexpectedly low: "
+                      << flip_rate << "\n";
+            return false;
+        }
     }
 
     std::cout << "[smoke] PASS\n";

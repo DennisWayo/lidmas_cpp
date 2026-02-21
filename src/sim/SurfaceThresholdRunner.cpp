@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
+#include <cstdlib>
 #include <cstdint>
+#include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -23,6 +26,7 @@
 #include "core/DecoderConfig.h"
 #include "core/PluginRegistry.h"
 #include "core/RegisterPlugins.h"
+#include "hybrid/hybrid_engine.hpp"
 #include "qec/LogicalOperators.h"
 #include "surface/ISurfaceDecoderPlugin.h"
 #include "surface/SurfaceCode.h"
@@ -63,6 +67,12 @@ struct PointStats {
     bool ci_target_met = false;
 };
 
+struct ThresholdResult {
+    int distance = 0;
+    double sigma = 0.0;
+    double ler = 0.0;
+};
+
 struct ThresholdPoint {
     int d = 0;
     double p = 0.0;
@@ -97,6 +107,97 @@ std::string normalizeDecoderName(const std::string& name) {
     if (name == "uf") return "uf";
     if (name == "neural_mwpm") return "neural_mwpm";
     return "mwpm";
+}
+
+const char* noiseModeName(NoiseMode mode) {
+    return (mode == NoiseMode::Hybrid) ? "hybrid" : "pauli";
+}
+
+std::vector<double> makeSweepGrid(double start, double end, double step) {
+    std::vector<double> out;
+    if (step <= 0.0) return out;
+    if (end < start) std::swap(start, end);
+    for (double x = start; x <= end + 1e-12; x += step) out.push_back(x);
+    return out;
+}
+
+std::string iso8601NowUtc() {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_utc{};
+#if defined(_WIN32)
+    gmtime_s(&tm_utc, &t);
+#else
+    gmtime_r(&t, &tm_utc);
+#endif
+    std::ostringstream oss;
+    oss << std::put_time(&tm_utc, "%Y-%m-%dT%H:%M:%SZ");
+    return oss.str();
+}
+
+std::string distancesCsv(const std::vector<int>& dists) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < dists.size(); ++i) {
+        if (i > 0) oss << ",";
+        oss << dists[i];
+    }
+    return oss.str();
+}
+
+std::vector<std::pair<std::pair<int, int>, double>> estimateSigmaCrossings(
+    const std::vector<ThresholdResult>& results,
+    const std::vector<int>& distances) {
+    std::vector<std::pair<std::pair<int, int>, double>> out;
+    if (distances.size() < 2) return out;
+
+    for (size_t i = 0; i + 1 < distances.size(); ++i) {
+        const int d1 = distances[i];
+        const int d2 = distances[i + 1];
+        double best_sigma = 0.0;
+        double best_diff = std::numeric_limits<double>::infinity();
+
+        for (const auto& a : results) {
+            if (a.distance != d1) continue;
+            for (const auto& b : results) {
+                if (b.distance != d2) continue;
+                if (std::abs(a.sigma - b.sigma) > 1e-9) continue;
+                const double diff = std::abs(a.ler - b.ler);
+                if (diff < best_diff) {
+                    best_diff = diff;
+                    best_sigma = a.sigma;
+                }
+            }
+        }
+
+        if (std::isfinite(best_diff)) {
+            out.push_back({{d1, d2}, best_sigma});
+        }
+    }
+    return out;
+}
+
+bool writeHybridPlotScript(const std::string& csv_path,
+                           const std::string& script_path) {
+    std::ostringstream py;
+    py << "import pandas as pd\n";
+    py << "import matplotlib.pyplot as plt\n\n";
+    py << "df = pd.read_csv(\"" << csv_path << "\")\n";
+    py << "df = df[df[\"mode\"] == \"hybrid\"]\n\n";
+    py << "for d in sorted(df[\"distance\"].unique()):\n";
+    py << "    sub = df[df[\"distance\"] == d]\n";
+    py << "    plt.plot(sub[\"sigma\"], sub[\"ler\"], marker='o', label=f\"d={d}\")\n\n";
+    py << "plt.xlabel(\"Sigma (CV noise)\")\n";
+    py << "plt.ylabel(\"Logical Error Rate\")\n";
+    py << "plt.title(\"Hybrid CV-Discrete Threshold Curve\")\n";
+    py << "plt.legend()\n";
+    py << "plt.grid(True)\n";
+    py << "plt.savefig(\"threshold_plot.png\", dpi=300)\n";
+
+    std::ofstream out(script_path, std::ios::out | std::ios::trunc);
+    if (!out.is_open()) return false;
+    out << py.str();
+    out.flush();
+    return true;
 }
 
 double percentile(std::vector<double> vals, double q) {
@@ -173,6 +274,10 @@ std::string makeScalingReportMarkdown(const SurfaceThresholdConfig& cfg,
     oss << "- decoder: `" << cfg.decoder_name << "`\n";
     oss << "- mwpm_graph: `" << cfg.mwpm_graph << "`\n";
     oss << "- weight_mode: `" << cfg.weight_mode << "`\n";
+    oss << "- mode: `" << noiseModeName(cfg.mode) << "`\n";
+    if (cfg.mode == NoiseMode::Hybrid) {
+        oss << "- cv_sigma: " << cfg.cv_sigma << "\n";
+    }
     oss << "- p range: [" << cfg.p_start << ", " << cfg.p_end << "] step " << cfg.p_step << "\n";
     oss << "- bootstrap_samples: " << cfg.scaling_bootstrap << "\n";
     oss << "- scaling_seed: " << cfg.scaling_seed << "\n";
@@ -498,17 +603,17 @@ std::string buildFailureDump(const std::string& decoder_name,
     return oss.str();
 }
 
-SingleTrialResult run_single_trial(const SurfaceCode& code,
-                                   const SparseRows& hz_rows,
-                                   SurfacePipeline& pipeline,
-                                   ISurfaceDecoderPlugin& plugin,
-                                   const std::string& decoder_name,
-                                   double p,
-                                   uint64_t seed_base,
-                                   int d,
-                                   int p_key,
-                                   long long trial_index,
-                                   int thread_id) {
+SingleTrialResult run_single_trial_discrete(const SurfaceCode& code,
+                                            const SparseRows& hz_rows,
+                                            SurfacePipeline& pipeline,
+                                            ISurfaceDecoderPlugin& plugin,
+                                            const std::string& decoder_name,
+                                            double p,
+                                            uint64_t seed_base,
+                                            int d,
+                                            int p_key,
+                                            long long trial_index,
+                                            int thread_id) {
     (void)pipeline;
     const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, trial_index, thread_id);
     SzTrialSample sample = sampleSzOnly(code, hz_rows, p, seed);
@@ -600,6 +705,74 @@ SingleTrialResult run_single_trial(const SurfaceCode& code,
     return out;
 }
 
+SingleTrialResult run_single_trial_hybrid(const std::string& decoder_name,
+                                          double p,
+                                          uint64_t seed_base,
+                                          int d,
+                                          int p_key,
+                                          long long trial_index,
+                                          int thread_id,
+                                          double sigma) {
+    const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, trial_index, thread_id);
+    SingleTrialResult out;
+    try {
+        HybridEngine engine(d, sigma, seed);
+        engine.run_trial();
+        const auto& r = engine.last_result();
+        out.logical_failure = r.logical_failure;
+        out.decoder_failed = r.decoder_failed;
+        out.defect_count = r.defect_count;
+        out.correction_weight = r.correction_weight;
+        if (r.decoder_failed) {
+            SurfaceCorrection corr;
+            corr.qubit_flips = r.correction_flips;
+            corr.weight = r.correction_weight;
+            out.failure_dump = buildFailureDump(
+                decoder_name,
+                d,
+                p,
+                trial_index,
+                seed,
+                {},
+                r.syndrome_sz,
+                r.correction_flips.empty() ? nullptr : &corr,
+                nullptr,
+                r.error_message.empty() ? "hybrid decoder failure" : r.error_message);
+        }
+    } catch (const std::exception& ex) {
+        out.decoder_failed = true;
+        out.logical_failure = true;
+        out.correction_weight = 0;
+        out.failure_dump = buildFailureDump(
+            decoder_name,
+            d,
+            p,
+            trial_index,
+            seed,
+            {},
+            {},
+            nullptr,
+            nullptr,
+            ex.what());
+    } catch (...) {
+        out.decoder_failed = true;
+        out.logical_failure = true;
+        out.correction_weight = 0;
+        out.failure_dump = buildFailureDump(
+            decoder_name,
+            d,
+            p,
+            trial_index,
+            seed,
+            {},
+            {},
+            nullptr,
+            nullptr,
+            "unknown hybrid exception");
+    }
+    return out;
+}
+
 double sampleStderr(long long n, double sum, double sumsq) {
     if (n <= 1) return 0.0;
     const double dn = static_cast<double>(n);
@@ -644,6 +817,8 @@ PointAccum runBatchTrials(const SurfaceCode& code,
                           const PluginRegistry& reg,
                           const std::string& decoder_name,
                           const DecoderConfig& dec_cfg,
+                          bool hybrid_mode,
+                          double cv_sigma,
                           double p,
                           uint64_t seed_base,
                           int d,
@@ -674,18 +849,20 @@ PointAccum runBatchTrials(const SurfaceCode& code,
         std::unique_ptr<IDecoderPlugin> plugin_base;
         ISurfaceDecoderPlugin* surf_plugin = nullptr;
         std::string plugin_init_error;
-        try {
-            plugin_base = reg.create(decoder_name);
-            surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
-            if (surf_plugin == nullptr) {
-                plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
-            } else {
-                surf_plugin->configure(dec_cfg);
+        if (!hybrid_mode) {
+            try {
+                plugin_base = reg.create(decoder_name);
+                surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
+                if (surf_plugin == nullptr) {
+                    plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
+                } else {
+                    surf_plugin->configure(dec_cfg);
+                }
+            } catch (const std::exception& ex) {
+                plugin_init_error = ex.what();
+            } catch (...) {
+                plugin_init_error = "unknown exception creating/configuring decoder plugin";
             }
-        } catch (const std::exception& ex) {
-            plugin_init_error = ex.what();
-        } catch (...) {
-            plugin_init_error = "unknown exception creating/configuring decoder plugin";
         }
 
 #pragma omp for schedule(static)
@@ -693,8 +870,11 @@ PointAccum runBatchTrials(const SurfaceCode& code,
             const long long t = start_trial + i;
             const int thread_id = omp_get_thread_num();
             SingleTrialResult r;
-            if (surf_plugin != nullptr) {
-                r = run_single_trial(
+            if (hybrid_mode) {
+                r = run_single_trial_hybrid(
+                    decoder_name, p, seed_base, d, p_key, t, thread_id, cv_sigma);
+            } else if (surf_plugin != nullptr) {
+                r = run_single_trial_discrete(
                     code, hz_rows, pipeline, *surf_plugin, decoder_name, p, seed_base, d, p_key, t, thread_id);
             } else {
                 const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, t, thread_id);
@@ -756,25 +936,30 @@ PointAccum runBatchTrials(const SurfaceCode& code,
     std::unique_ptr<IDecoderPlugin> plugin_base;
     ISurfaceDecoderPlugin* surf_plugin = nullptr;
     std::string plugin_init_error;
-    try {
-        plugin_base = reg.create(decoder_name);
-        surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
-        if (surf_plugin == nullptr) {
-            plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
-        } else {
-            surf_plugin->configure(dec_cfg);
+    if (!hybrid_mode) {
+        try {
+            plugin_base = reg.create(decoder_name);
+            surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
+            if (surf_plugin == nullptr) {
+                plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
+            } else {
+                surf_plugin->configure(dec_cfg);
+            }
+        } catch (const std::exception& ex) {
+            plugin_init_error = ex.what();
+        } catch (...) {
+            plugin_init_error = "unknown exception creating/configuring decoder plugin";
         }
-    } catch (const std::exception& ex) {
-        plugin_init_error = ex.what();
-    } catch (...) {
-        plugin_init_error = "unknown exception creating/configuring decoder plugin";
     }
 
     for (int i = 0; i < batch_trials; ++i) {
         const long long t = start_trial + i;
         SingleTrialResult r;
-        if (surf_plugin != nullptr) {
-            r = run_single_trial(
+        if (hybrid_mode) {
+            r = run_single_trial_hybrid(
+                decoder_name, p, seed_base, d, p_key, t, 0, cv_sigma);
+        } else if (surf_plugin != nullptr) {
+            r = run_single_trial_discrete(
                 code, hz_rows, pipeline, *surf_plugin, decoder_name, p, seed_base, d, p_key, t, 0);
         } else {
             const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, t, 0);
@@ -1027,18 +1212,25 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg) {
 
 int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginRegistry& reg) {
     std::remove("surface_decoder_failure_dump.txt");
+    const bool hybrid_mode = (cfg.mode == NoiseMode::Hybrid);
+    const std::string surface_mode = noiseModeName(cfg.mode);
+
     std::ofstream out(cfg.out_csv);
     if (!out.is_open()) {
         std::cerr << "error: cannot open output CSV '" << cfg.out_csv << "'\n";
         return 1;
     }
-    out << "distance,p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,decoder_fail_rate,"
-        << "weight_mode,llr_p_data,llr_p_meas,llr_p_idle,mwpm_weight_scale,mwpm_graph\n";
+    out << "mode,distance,sigma,pauli_p,trials,ler,ci_low,ci_high,defect_mean,weight_mean,"
+        << "decoder_fail_rate,mwpm_weight_scale,mwpm_graph,timestamp\n";
 
-    const std::string decoder_name = normalizeDecoderName(cfg.decoder_name);
+    std::string decoder_name = normalizeDecoderName(cfg.decoder_name);
     if (cfg.decoder_name != decoder_name) {
         std::cout << "WARNING: unknown decoder '" << cfg.decoder_name
                   << "', falling back to mwpm\n";
+    }
+    if (hybrid_mode && decoder_name != "mwpm") {
+        std::cout << "WARNING: hybrid mode uses MWPM decode path; forcing decoder=mwpm\n";
+        decoder_name = "mwpm";
     }
     std::string mwpm_graph = cfg.mwpm_graph;
     if (mwpm_graph != "full" && mwpm_graph != "simple") {
@@ -1047,9 +1239,12 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         mwpm_graph = "full";
     }
 
-    const std::vector<double> p_values = makePGrid(cfg.p_start, cfg.p_end, cfg.p_step);
-    if (p_values.empty()) {
-        std::cerr << "error: empty p grid for threshold run\n";
+    const std::vector<double> sweep_values = hybrid_mode
+        ? makeSweepGrid(cfg.sigma_start, cfg.sigma_end, cfg.sigma_step)
+        : makeSweepGrid(cfg.p_start, cfg.p_end, cfg.p_step);
+    if (sweep_values.empty()) {
+        std::cerr << "error: empty " << (hybrid_mode ? "sigma" : "p")
+                  << " grid for threshold run\n";
         return 1;
     }
 
@@ -1062,7 +1257,13 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
     threads = omp_get_max_threads();
 #endif
     std::cout << "threshold: threads=" << threads << "\n";
-    if (cfg.weight_mode == "llr") {
+    std::cout << "mode: " << surface_mode;
+    if (hybrid_mode) {
+        std::cout << " sigma_range=[" << sweep_values.front() << "," << sweep_values.back()
+                  << "] step=" << cfg.sigma_step;
+    }
+    std::cout << "\n";
+    if (!hybrid_mode && cfg.weight_mode == "llr") {
         const auto p_or_sweep = [](double v) -> std::string {
             if (v >= 0.0) {
                 std::ostringstream oss;
@@ -1076,6 +1277,11 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                   << " p_meas=" << p_or_sweep(cfg.llr_p_meas)
                   << " p_idle=" << p_or_sweep(cfg.llr_p_idle)
                   << " clamp=[" << cfg.llr_clamp_min << "," << cfg.llr_clamp_max << "]"
+                  << " mwpm_weight_scale=" << cfg.mwpm_weight_scale
+                  << " mwpm_graph=" << mwpm_graph
+                  << "\n";
+    } else if (hybrid_mode) {
+        std::cout << "weights: hybrid mode (pauli p disabled)"
                   << " mwpm_weight_scale=" << cfg.mwpm_weight_scale
                   << " mwpm_graph=" << mwpm_graph
                   << "\n";
@@ -1101,7 +1307,9 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
     constexpr double kEps = 1e-12;
     std::atomic<bool> first_failure_dumped{false};
     std::vector<SweepPoint> scaling_points;
-    scaling_points.reserve(static_cast<size_t>(cfg.distances.size() * p_values.size()));
+    scaling_points.reserve(static_cast<size_t>(cfg.distances.size() * sweep_values.size()));
+    std::vector<ThresholdResult> results;
+    results.reserve(static_cast<size_t>(cfg.distances.size() * sweep_values.size()));
     for (int d : cfg.distances) {
         SurfaceCode code(d);
         SurfacePipeline pipeline(code);
@@ -1123,7 +1331,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             (cfg.uf_weighted || cfg.weight_mode == "neural" || cfg.weight_mode == "llr") ? 1 : 0;
         dec_cfg.ptr_params["surface_code"] = &code;
 
-        {
+        if (!hybrid_mode) {
             std::unique_ptr<IDecoderPlugin> check_plugin = reg.create(decoder_name);
             auto* check_surface = dynamic_cast<ISurfaceDecoderPlugin*>(check_plugin.get());
             if (check_surface == nullptr) {
@@ -1135,13 +1343,15 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
 
         double prev_raw_ler = -1.0;
         double smoothed_ler = 0.0;
-        for (size_t p_index = 0; p_index < p_values.size(); ++p_index) {
-            const double p = p_values[p_index];
-            const int p_key = static_cast<int>(std::llround(p * 1e6));
+        for (size_t sweep_index = 0; sweep_index < sweep_values.size(); ++sweep_index) {
+            const double sweep = sweep_values[sweep_index];
+            const double sigma = hybrid_mode ? sweep : 0.0;
+            const double p = hybrid_mode ? 0.0 : sweep;
+            const int p_key = static_cast<int>(std::llround(sweep * 1e6));
             dec_cfg.p = p;
-            const double llr_p_data = (cfg.llr_p_data >= 0.0) ? cfg.llr_p_data : p;
-            const double llr_p_meas = (cfg.llr_p_meas >= 0.0) ? cfg.llr_p_meas : p;
-            const double llr_p_idle = (cfg.llr_p_idle >= 0.0) ? cfg.llr_p_idle : p;
+            const double llr_p_data = hybrid_mode ? 0.0 : ((cfg.llr_p_data >= 0.0) ? cfg.llr_p_data : p);
+            const double llr_p_meas = hybrid_mode ? 0.0 : ((cfg.llr_p_meas >= 0.0) ? cfg.llr_p_meas : p);
+            const double llr_p_idle = hybrid_mode ? 0.0 : ((cfg.llr_p_idle >= 0.0) ? cfg.llr_p_idle : p);
             dec_cfg.double_params["llr_p_data"] = llr_p_data;
             dec_cfg.double_params["llr_p_meas"] = llr_p_meas;
             dec_cfg.double_params["llr_p_idle"] = llr_p_idle;
@@ -1149,11 +1359,19 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             dec_cfg.double_params["llr_clamp_max"] = cfg.llr_clamp_max;
             dec_cfg.double_params["mwpm_weight_scale"] = cfg.mwpm_weight_scale;
 
-            std::cout << "running d=" << d
-                      << " p=" << std::fixed << std::setprecision(3) << p
-                      << " target_trials=" << resolved_max_trials
-                      << " batch=" << resolved_batch_trials
-                      << "\n";
+            if (hybrid_mode) {
+                std::cout << "running d=" << d
+                          << " sigma=" << std::fixed << std::setprecision(3) << sigma
+                          << " target_trials=" << resolved_max_trials
+                          << " batch=" << resolved_batch_trials
+                          << "\n";
+            } else {
+                std::cout << "running d=" << d
+                          << " p=" << std::fixed << std::setprecision(3) << p
+                          << " target_trials=" << resolved_max_trials
+                          << " batch=" << resolved_batch_trials
+                          << "\n";
+            }
 
             PointAccum accum;
             bool ci_met = false;
@@ -1176,19 +1394,25 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                     reg,
                     decoder_name,
                     dec_cfg,
+                    hybrid_mode,
+                    sigma,
                     p,
                     dec_cfg.seed,
                     d,
-                    p_key + static_cast<int>(p_index * 997),
+                    p_key + static_cast<int>(sweep_index * 997),
                     accum.trials,
                     batch,
                     first_failure_dumped);
                 mergeAccum(accum, batch_acc);
 
                 if (accum.trials >= next_progress && accum.trials < resolved_max_trials) {
-                    std::cout << "progress d=" << d
-                              << " p=" << std::fixed << std::setprecision(3) << p
-                              << " trials=" << accum.trials;
+                    std::cout << "progress d=" << d;
+                    if (hybrid_mode) {
+                        std::cout << " sigma=" << std::fixed << std::setprecision(3) << sigma;
+                    } else {
+                        std::cout << " p=" << std::fixed << std::setprecision(3) << p;
+                    }
+                    std::cout << " trials=" << accum.trials;
                     if (fixed_mode) {
                         std::cout << "/" << resolved_max_trials;
                     }
@@ -1208,24 +1432,39 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
 
             PointStats stats = finalizePoint(accum, cfg.target_ci_halfwidth, cfg.target_rel_ci);
             if (!fixed_mode && !ci_met && accum.trials >= resolved_max_trials) {
-                std::cout << "NOTE: reached max_trials at d=" << d
-                          << ", p=" << p << "\n";
+                std::cout << "NOTE: reached max_trials at d=" << d << ", ";
+                if (hybrid_mode) {
+                    std::cout << "sigma=" << sigma;
+                } else {
+                    std::cout << "p=" << p;
+                }
+                std::cout << "\n";
             }
             if (stats.decoder_fail_rate > 0.0) {
-                std::cout << "WARNING: decoder_fail_rate>0 at d=" << d
-                          << " p=" << p
+                std::cout << "WARNING: decoder_fail_rate>0 at d=" << d;
+                if (hybrid_mode) {
+                    std::cout << " sigma=" << sigma;
+                } else {
+                    std::cout << " p=" << p;
+                }
+                std::cout
                           << " fail_rate=" << stats.decoder_fail_rate
                           << " (first failure dump: surface_decoder_failure_dump.txt)\n";
             }
 
-            if (std::abs(p) <= kEps && stats.ler > kEps) {
+            if (!hybrid_mode && std::abs(p) <= kEps && stats.ler > kEps) {
                 std::cout << "WARNING: p=0 produced non-zero LER at d=" << d
                           << " (LER=" << stats.ler
                           << ", trials=" << stats.trials << ")\n";
             }
             if (prev_raw_ler >= 0.0 && stats.ler + kEps < prev_raw_ler) {
-                std::cout << "WARNING: non-monotonic LER at d=" << d
-                          << " p=" << p
+                std::cout << "WARNING: non-monotonic LER at d=" << d;
+                if (hybrid_mode) {
+                    std::cout << " sigma=" << sigma;
+                } else {
+                    std::cout << " p=" << p;
+                }
+                std::cout
                           << " prev=" << prev_raw_ler
                           << " now=" << stats.ler
                           << " likely finite-trial variance; CI_halfwidth=" << stats.ci_halfwidth
@@ -1233,19 +1472,22 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             }
             prev_raw_ler = stats.ler;
 
-            if (p_index == 0) smoothed_ler = stats.ler;
+            if (sweep_index == 0) smoothed_ler = stats.ler;
             else smoothed_ler = std::max(smoothed_ler, stats.ler);
             const double ler_report = cfg.monotonic_smooth ? smoothed_ler : stats.ler;
             SweepPoint sp;
             sp.d = d;
-            sp.p = p;
+            sp.p = sweep;
             sp.trials = static_cast<int>(stats.trials);
             sp.ler = stats.ler;
             sp.ci_low = stats.ler_lo95;
             sp.ci_high = stats.ler_hi95;
             scaling_points.push_back(sp);
+            results.push_back(ThresholdResult{d, sigma, ler_report});
 
-            out << d << ","
+            out << surface_mode << ","
+                << d << ","
+                << sigma << ","
                 << p << ","
                 << stats.trials << ","
                 << ler_report << ","
@@ -1254,17 +1496,18 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                 << stats.defect_avg << ","
                 << stats.weight_avg << ","
                 << stats.decoder_fail_rate << ","
-                << cfg.weight_mode << ","
-                << llr_p_data << ","
-                << llr_p_meas << ","
-                << llr_p_idle << ","
                 << cfg.mwpm_weight_scale << ","
-                << mwpm_graph << "\n";
+                << mwpm_graph << ","
+                << iso8601NowUtc()
+                << "\n";
 
-            std::cout << std::fixed
-                      << "d=" << d
-                      << " p=" << std::setprecision(3) << p
-                      << " trials=" << stats.trials
+            std::cout << std::fixed << "d=" << d;
+            if (hybrid_mode) {
+                std::cout << " sigma=" << std::setprecision(3) << sigma;
+            } else {
+                std::cout << " p=" << std::setprecision(3) << p;
+            }
+            std::cout << " trials=" << stats.trials
                       << " LER=" << std::setprecision(6) << ler_report
                       << " [" << stats.ler_lo95 << "," << stats.ler_hi95 << "]"
                       << " defect=" << std::setprecision(4) << stats.defect_avg
@@ -1276,117 +1519,168 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         }
     }
 
-    const bool do_estimate_threshold = cfg.auto_threshold || cfg.estimate_threshold;
-    std::vector<CrossingEstimate> crossings;
-    CrossingAggregate crossing_agg;
-    CollapseFitResult collapse_fit{};
-    bool have_collapse = false;
+    if (hybrid_mode) {
+        const auto crossing_est = estimateSigmaCrossings(results, cfg.distances);
+        for (const auto& c : crossing_est) {
+            std::cout << "Estimated crossing between d=" << c.first.first
+                      << " and d=" << c.first.second
+                      << " at sigma ~= " << std::fixed << std::setprecision(2) << c.second
+                      << "\n";
+        }
 
-    if (do_estimate_threshold) {
-        ScalingOutputs cross_out = ScalingAnalysis::run_all(
-            scaling_points,
-            true,
-            false,
-            cfg.monotonic_smooth,
-            cfg.ler_smooth_eps,
-            cfg.scaling_bootstrap,
-            cfg.scaling_seed);
-        crossings = std::move(cross_out.crossings);
-        crossing_agg = aggregateCrossings(crossings);
-
-        std::cout << "--------------------------------------\n";
-        std::cout << "Threshold Crossing Estimate\n";
-        if (crossings.empty()) {
-            std::cout << "WARNING: no crossings found. Increase p resolution "
-                      << "(smaller --p_step) or widen p range.\n";
-        } else {
-            for (const auto& c : crossings) {
-                std::cout << "pair d=" << c.d1 << " vs " << c.d2
-                          << " crossing p*=" << std::fixed << std::setprecision(6) << c.pc
-                          << " [" << c.pc_low << "," << c.pc_high << "]"
-                          << " q=" << std::setprecision(3) << c.quality
-                          << "\n";
+        if (writeHybridPlotScript(cfg.out_csv, "plot_threshold.py")) {
+            std::cout << "Plot script written to plot_threshold.py\n";
+            const int py_status = std::system("python3 plot_threshold.py > /dev/null 2>&1");
+            if (py_status == 0) {
+                std::cout << "threshold_plot.png generated\n";
+            } else {
+                std::cout << "WARNING: automatic plot generation failed; run python3 plot_threshold.py manually\n";
             }
+        } else {
+            std::cout << "WARNING: failed to write plot script to plot_threshold.py\n";
+        }
+
+        std::cout << "--------------------------------\n";
+        std::cout << "Hybrid Threshold Summary\n";
+        std::cout << "--------------------------------\n";
+        std::cout << "Distances tested: " << distancesCsv(cfg.distances) << "\n";
+        std::cout << "Sigma range: " << std::fixed << std::setprecision(2)
+                  << sweep_values.front() << " - " << sweep_values.back() << "\n";
+        std::cout << "Trials per point: " << cfg.trials << "\n";
+        for (size_t i = 0; i + 1 < cfg.distances.size(); ++i) {
+            const int d1 = cfg.distances[i];
+            const int d2 = cfg.distances[i + 1];
+            bool found = false;
+            double sigma_cross = 0.0;
+            for (const auto& c : crossing_est) {
+                if (c.first.first == d1 && c.first.second == d2) {
+                    found = true;
+                    sigma_cross = c.second;
+                    break;
+                }
+            }
+            std::cout << "Estimated crossing d=" << d1 << "/" << d2 << ": ";
+            if (found) {
+                std::cout << std::fixed << std::setprecision(2) << sigma_cross;
+            } else {
+                std::cout << "n/a";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "--------------------------------\n";
+    } else {
+        const bool do_estimate_threshold = cfg.auto_threshold || cfg.estimate_threshold;
+        std::vector<CrossingEstimate> crossings;
+        CrossingAggregate crossing_agg;
+        CollapseFitResult collapse_fit{};
+        bool have_collapse = false;
+
+        if (do_estimate_threshold) {
+            ScalingOutputs cross_out = ScalingAnalysis::run_all(
+                scaling_points,
+                true,
+                false,
+                cfg.monotonic_smooth,
+                cfg.ler_smooth_eps,
+                cfg.scaling_bootstrap,
+                cfg.scaling_seed);
+            crossings = std::move(cross_out.crossings);
+            crossing_agg = aggregateCrossings(crossings);
+
+            std::cout << "--------------------------------------\n";
+            std::cout << "Threshold Crossing Estimate\n";
+            if (crossings.empty()) {
+                std::cout << "WARNING: no crossings found. Increase p resolution "
+                          << "(smaller --p_step) or widen p range.\n";
+            } else {
+                for (const auto& c : crossings) {
+                    std::cout << "pair d=" << c.d1 << " vs " << c.d2
+                              << " crossing p*=" << std::fixed << std::setprecision(6) << c.pc
+                              << " [" << c.pc_low << "," << c.pc_high << "]"
+                              << " q=" << std::setprecision(3) << c.quality
+                              << "\n";
+                }
+                if (crossing_agg.valid) {
+                    std::cout << "Pairs used: " << crossingPairsString(crossings) << "\n";
+                    std::cout << "Estimated p_c = " << std::setprecision(6) << crossing_agg.pc
+                              << " [" << crossing_agg.pc_low << ", " << crossing_agg.pc_high << "]\n";
+                    std::cout << "Method: pairwise crossing (d pairs used: "
+                              << crossingPairsString(crossings) << ")\n";
+                }
+            }
+            std::cout << "--------------------------------------\n";
+        } else if (cfg.scaling_fit) {
+            // Used only to seed the collapse optimizer when threshold estimation is not explicitly requested.
+            crossings = ScalingAnalysis::estimate_crossings(
+                scaling_points, cfg.monotonic_smooth, cfg.ler_smooth_eps, 1);
+            crossing_agg = aggregateCrossings(crossings);
+        }
+
+        if (cfg.scaling_fit) {
+            double pc_min = cfg.pc_min_set ? cfg.pc_min : sweep_values.front();
+            double pc_max = cfg.pc_max_set ? cfg.pc_max : sweep_values.back();
+            if (pc_max < pc_min) std::swap(pc_min, pc_max);
+
+            double nu_min = cfg.nu_min_set ? cfg.nu_min : 0.5;
+            double nu_max = cfg.nu_max_set ? cfg.nu_max : 3.0;
+            if (nu_max < nu_min) std::swap(nu_min, nu_max);
+
+            const double pc_init = crossing_agg.valid ? crossing_agg.pc : 0.5 * (pc_min + pc_max);
+            const double nu_init = 1.0;
+
+            collapse_fit = ScalingAnalysis::fit_collapse(
+                scaling_points,
+                cfg.monotonic_smooth,
+                cfg.ler_smooth_eps,
+                pc_init,
+                nu_init,
+                pc_min,
+                pc_max,
+                nu_min,
+                nu_max,
+                cfg.grid_pc,
+                cfg.grid_nu,
+                cfg.scaling_bootstrap,
+                cfg.scaling_seed);
+            have_collapse = std::isfinite(collapse_fit.cost);
+
+            std::cout << "--------------------------------------\n";
+            std::cout << "Finite-Size Scaling Fit\n";
             if (crossing_agg.valid) {
-                std::cout << "Pairs used: " << crossingPairsString(crossings) << "\n";
-                std::cout << "Estimated p_c = " << std::setprecision(6) << crossing_agg.pc
+                std::cout << "Crossing median p_c = " << std::fixed << std::setprecision(6)
+                          << crossing_agg.pc
                           << " [" << crossing_agg.pc_low << ", " << crossing_agg.pc_high << "]\n";
-                std::cout << "Method: pairwise crossing (d pairs used: "
-                          << crossingPairsString(crossings) << ")\n";
             }
+            if (have_collapse) {
+                std::cout << "Best p_c = " << std::fixed << std::setprecision(6)
+                          << collapse_fit.pc
+                          << " [" << collapse_fit.pc_low << ", " << collapse_fit.pc_high << "]\n";
+                std::cout << "Best nu = " << std::fixed << std::setprecision(6)
+                          << collapse_fit.nu
+                          << " [" << collapse_fit.nu_low << ", " << collapse_fit.nu_high << "]\n";
+                std::cout << "Collapse cost = " << std::fixed << std::setprecision(8)
+                          << collapse_fit.cost << "\n";
+            } else {
+                std::cout << "WARNING: scaling fit unavailable (insufficient threshold data).\n";
+            }
+            std::cout << "--------------------------------------\n";
         }
-        std::cout << "--------------------------------------\n";
-    } else if (cfg.scaling_fit) {
-        // Used only to seed the collapse optimizer when threshold estimation is not explicitly requested.
-        crossings = ScalingAnalysis::estimate_crossings(
-            scaling_points, cfg.monotonic_smooth, cfg.ler_smooth_eps, 1);
-        crossing_agg = aggregateCrossings(crossings);
-    }
 
-    if (cfg.scaling_fit) {
-        double pc_min = cfg.pc_min_set ? cfg.pc_min : p_values.front();
-        double pc_max = cfg.pc_max_set ? cfg.pc_max : p_values.back();
-        if (pc_max < pc_min) std::swap(pc_min, pc_max);
-
-        double nu_min = cfg.nu_min_set ? cfg.nu_min : 0.5;
-        double nu_max = cfg.nu_max_set ? cfg.nu_max : 3.0;
-        if (nu_max < nu_min) std::swap(nu_min, nu_max);
-
-        const double pc_init = crossing_agg.valid ? crossing_agg.pc : 0.5 * (pc_min + pc_max);
-        const double nu_init = 1.0;
-
-        collapse_fit = ScalingAnalysis::fit_collapse(
-            scaling_points,
-            cfg.monotonic_smooth,
-            cfg.ler_smooth_eps,
-            pc_init,
-            nu_init,
-            pc_min,
-            pc_max,
-            nu_min,
-            nu_max,
-            cfg.grid_pc,
-            cfg.grid_nu,
-            cfg.scaling_bootstrap,
-            cfg.scaling_seed);
-        have_collapse = std::isfinite(collapse_fit.cost);
-
-        std::cout << "--------------------------------------\n";
-        std::cout << "Finite-Size Scaling Fit\n";
-        if (crossing_agg.valid) {
-            std::cout << "Crossing median p_c = " << std::fixed << std::setprecision(6)
-                      << crossing_agg.pc
-                      << " [" << crossing_agg.pc_low << ", " << crossing_agg.pc_high << "]\n";
-        }
-        if (have_collapse) {
-            std::cout << "Best p_c = " << std::fixed << std::setprecision(6)
-                      << collapse_fit.pc
-                      << " [" << collapse_fit.pc_low << ", " << collapse_fit.pc_high << "]\n";
-            std::cout << "Best nu = " << std::fixed << std::setprecision(6)
-                      << collapse_fit.nu
-                      << " [" << collapse_fit.nu_low << ", " << collapse_fit.nu_high << "]\n";
-            std::cout << "Collapse cost = " << std::fixed << std::setprecision(8)
-                      << collapse_fit.cost << "\n";
-        } else {
-            std::cout << "WARNING: scaling fit unavailable (insufficient threshold data).\n";
-        }
-        std::cout << "--------------------------------------\n";
-    }
-
-    if (do_estimate_threshold || cfg.scaling_fit) {
-        const std::string report_md = makeScalingReportMarkdown(
-            cfg, scaling_points, crossings, crossing_agg, have_collapse ? &collapse_fit : nullptr);
-        const std::string summary_json = makeScalingSummaryJson(
-            cfg.scaling_seed, crossings, crossing_agg, have_collapse ? &collapse_fit : nullptr);
-        if (!writeTextFile(cfg.scaling_report, report_md)) {
-            std::cout << "WARNING: failed to write scaling report to " << cfg.scaling_report << "\n";
-        } else {
-            std::cout << "scaling report written to " << cfg.scaling_report << "\n";
-        }
-        if (!writeTextFile(cfg.scaling_json, summary_json)) {
-            std::cout << "WARNING: failed to write scaling summary JSON to " << cfg.scaling_json << "\n";
-        } else {
-            std::cout << "scaling summary JSON written to " << cfg.scaling_json << "\n";
+        if (do_estimate_threshold || cfg.scaling_fit) {
+            const std::string report_md = makeScalingReportMarkdown(
+                cfg, scaling_points, crossings, crossing_agg, have_collapse ? &collapse_fit : nullptr);
+            const std::string summary_json = makeScalingSummaryJson(
+                cfg.scaling_seed, crossings, crossing_agg, have_collapse ? &collapse_fit : nullptr);
+            if (!writeTextFile(cfg.scaling_report, report_md)) {
+                std::cout << "WARNING: failed to write scaling report to " << cfg.scaling_report << "\n";
+            } else {
+                std::cout << "scaling report written to " << cfg.scaling_report << "\n";
+            }
+            if (!writeTextFile(cfg.scaling_json, summary_json)) {
+                std::cout << "WARNING: failed to write scaling summary JSON to " << cfg.scaling_json << "\n";
+            } else {
+                std::cout << "scaling summary JSON written to " << cfg.scaling_json << "\n";
+            }
         }
     }
 
