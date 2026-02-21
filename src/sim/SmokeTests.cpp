@@ -1,8 +1,11 @@
 #include "sim/SmokeTests.h"
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <string>
 
 #include "codes/LDPCGenerator.h"
 #include "decoders/BPDecoderAdapter.h"
@@ -33,6 +36,40 @@ bool syndrome_is_zero(const std::vector<int>& s) {
         if ((v & 1) != 0) return false;
     }
     return true;
+}
+
+bool readFile(const std::string& path, std::string& out) {
+    std::ifstream in(path);
+    if (!in.is_open()) return false;
+    out.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    return true;
+}
+
+bool extractJsonNumber(const std::string& json, const std::string& key, double& value_out) {
+    const std::string token = "\"" + key + "\"";
+    const size_t pos = json.find(token);
+    if (pos == std::string::npos) return false;
+    const size_t colon = json.find(':', pos + token.size());
+    if (colon == std::string::npos) return false;
+    size_t start = json.find_first_not_of(" \t\r\n", colon + 1);
+    if (start == std::string::npos) return false;
+    if (json.compare(start, 4, "null") == 0) return false;
+    size_t end = start;
+    while (end < json.size()) {
+        const char ch = json[end];
+        if ((ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.' || ch == 'e' || ch == 'E') {
+            ++end;
+            continue;
+        }
+        break;
+    }
+    if (end <= start) return false;
+    try {
+        value_out = std::stod(json.substr(start, end - start));
+        return std::isfinite(value_out);
+    } catch (...) {
+        return false;
+    }
 }
 
 } // namespace
@@ -404,6 +441,62 @@ bool run_smoke_tests() {
     thr_cfg.mwpm_graph = "full";
     if (SurfaceThresholdRunner::run(thr_cfg) != 0) {
         std::cerr << "[smoke] surface threshold smoke run failed\n";
+        return false;
+    }
+
+    SurfaceThresholdConfig scale_cfg;
+    scale_cfg.decoder_name = "mwpm";
+    scale_cfg.mwpm_graph = "full";
+    scale_cfg.distances = {3, 5};
+    scale_cfg.p_start = 0.01;
+    scale_cfg.p_end = 0.03;
+    scale_cfg.p_step = 0.01;
+    scale_cfg.trials = 30;
+    scale_cfg.trials_explicit = true;
+    scale_cfg.adaptive_enabled = false;
+    scale_cfg.estimate_threshold = true;
+    scale_cfg.scaling_fit = true;
+    scale_cfg.scaling_bootstrap = 20;
+    scale_cfg.scaling_seed = 12345;
+    scale_cfg.grid_pc = 11;
+    scale_cfg.grid_nu = 9;
+    scale_cfg.pc_min = 0.01;
+    scale_cfg.pc_max = 0.03;
+    scale_cfg.pc_min_set = true;
+    scale_cfg.pc_max_set = true;
+    scale_cfg.nu_min = 0.5;
+    scale_cfg.nu_max = 2.5;
+    scale_cfg.nu_min_set = true;
+    scale_cfg.nu_max_set = true;
+    scale_cfg.out_csv = "/tmp/lidmas_surface_threshold_scaling_smoke.csv";
+    scale_cfg.scaling_report = "/tmp/lidmas_surface_scaling_smoke.md";
+    scale_cfg.scaling_json = "/tmp/lidmas_surface_scaling_smoke.json";
+    if (SurfaceThresholdRunner::run(scale_cfg) != 0) {
+        std::cerr << "[smoke] surface threshold scaling run failed\n";
+        return false;
+    }
+    if (!std::filesystem::exists(scale_cfg.scaling_report)
+        || !std::filesystem::exists(scale_cfg.scaling_json)) {
+        std::cerr << "[smoke] scaling outputs missing\n";
+        return false;
+    }
+    std::string json;
+    if (!readFile(scale_cfg.scaling_json, json)) {
+        std::cerr << "[smoke] failed reading scaling JSON output\n";
+        return false;
+    }
+    double pc = 0.0;
+    double nu = 0.0;
+    if (!extractJsonNumber(json, "pc", pc) || !extractJsonNumber(json, "nu", nu)) {
+        std::cerr << "[smoke] failed extracting pc/nu from scaling JSON\n";
+        return false;
+    }
+    if (!(pc >= scale_cfg.pc_min - 1e-9 && pc <= scale_cfg.pc_max + 1e-9)) {
+        std::cerr << "[smoke] pc out of requested bounds\n";
+        return false;
+    }
+    if (!(nu >= scale_cfg.nu_min - 1e-9 && nu <= scale_cfg.nu_max + 1e-9)) {
+        std::cerr << "[smoke] nu out of requested bounds\n";
         return false;
     }
 

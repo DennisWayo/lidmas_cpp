@@ -142,6 +142,14 @@ void printHelp(const PluginRegistry& plugins) {
               << "  --auto_threshold              Estimate threshold crossings after sweep\n"
               << "  --estimate_threshold          Pairwise crossing estimate of p_c\n"
               << "  --scaling_fit                Finite-size scaling fit for p_c and nu\n"
+              << "  --scaling_bootstrap=<N>       Bootstrap samples for crossing/collapse CIs (default 200)\n"
+              << "  --scaling_seed=<uint>         RNG seed for scaling bootstrap (default 12345)\n"
+              << "  --pc_min=<x> --pc_max=<x>     Optional p_c search bounds override\n"
+              << "  --nu_min=<x> --nu_max=<x>     Optional nu search bounds override\n"
+              << "  --grid_pc=<N> --grid_nu=<N>   Grid resolution for collapse fit (default 61x51)\n"
+              << "  --ler_smooth_eps=<x>          Isotonic smoothing tolerance epsilon (default 0)\n"
+              << "  --scaling_report=<path>       Markdown scaling report path\n"
+              << "  --scaling_json=<path>         JSON scaling summary path\n"
               << "  --quiet-iter-log              Disable per-iteration decode logging\n"
               << "  surface decoders              " << surface_decoders << "\n"
               << "  --help, -h                    Show this help text\n";
@@ -572,6 +580,54 @@ int main(int argc, char** argv) {
         }
         if (hasFlag(args, "--estimate_threshold")) cfg.estimate_threshold = true;
         if (hasFlag(args, "--scaling_fit")) cfg.scaling_fit = true;
+        const std::string scaling_bootstrap = getValuePrefix(args, "--scaling_bootstrap=");
+        if (!scaling_bootstrap.empty()) {
+            cfg.scaling_bootstrap = std::max(0, std::stoi(scaling_bootstrap));
+        }
+        const std::string scaling_seed = getValuePrefix(args, "--scaling_seed=");
+        if (!scaling_seed.empty()) {
+            cfg.scaling_seed = static_cast<uint64_t>(std::stoull(scaling_seed));
+        }
+        const std::string pc_min = getValuePrefix(args, "--pc_min=");
+        if (!pc_min.empty()) {
+            cfg.pc_min = std::stod(pc_min);
+            cfg.pc_min_set = true;
+        }
+        const std::string pc_max = getValuePrefix(args, "--pc_max=");
+        if (!pc_max.empty()) {
+            cfg.pc_max = std::stod(pc_max);
+            cfg.pc_max_set = true;
+        }
+        const std::string nu_min = getValuePrefix(args, "--nu_min=");
+        if (!nu_min.empty()) {
+            cfg.nu_min = std::stod(nu_min);
+            cfg.nu_min_set = true;
+        }
+        const std::string nu_max = getValuePrefix(args, "--nu_max=");
+        if (!nu_max.empty()) {
+            cfg.nu_max = std::stod(nu_max);
+            cfg.nu_max_set = true;
+        }
+        const std::string grid_pc = getValuePrefix(args, "--grid_pc=");
+        if (!grid_pc.empty()) {
+            cfg.grid_pc = std::max(2, std::stoi(grid_pc));
+        }
+        const std::string grid_nu = getValuePrefix(args, "--grid_nu=");
+        if (!grid_nu.empty()) {
+            cfg.grid_nu = std::max(2, std::stoi(grid_nu));
+        }
+        const std::string ler_smooth_eps = getValuePrefix(args, "--ler_smooth_eps=");
+        if (!ler_smooth_eps.empty()) {
+            cfg.ler_smooth_eps = std::max(0.0, std::stod(ler_smooth_eps));
+        }
+        const std::string scaling_report = getValuePrefix(args, "--scaling_report=");
+        if (!scaling_report.empty()) {
+            cfg.scaling_report = scaling_report;
+        }
+        const std::string scaling_json = getValuePrefix(args, "--scaling_json=");
+        if (!scaling_json.empty()) {
+            cfg.scaling_json = scaling_json;
+        }
         cfg.adaptive_enabled = adaptive_requested;
         cfg.neural_weights_path = neural_weights_path;
         cfg.neural_model_path = neural_model_path;

@@ -30,6 +30,7 @@
 #include "surface/SurfacePipeline.h"
 #include "surface/SurfaceSyndrome.h"
 #include "surface/SyndromeGraph.h"
+#include "surface/ScalingAnalysis.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -83,12 +84,189 @@ struct ScalingFitResult {
     double cost = std::numeric_limits<double>::infinity();
 };
 
+struct CrossingAggregate {
+    bool valid = false;
+    double pc = 0.0;
+    double pc_low = 0.0;
+    double pc_high = 0.0;
+};
+
 std::string normalizeDecoderName(const std::string& name) {
     if (name == "stub" || name == "mwpm_stub") return "stub";
     if (name == "mwpm") return "mwpm";
     if (name == "uf") return "uf";
     if (name == "neural_mwpm") return "neural_mwpm";
     return "mwpm";
+}
+
+double percentile(std::vector<double> vals, double q) {
+    if (vals.empty()) return std::numeric_limits<double>::quiet_NaN();
+    q = std::clamp(q, 0.0, 1.0);
+    std::sort(vals.begin(), vals.end());
+    const double idx = q * static_cast<double>(vals.size() - 1);
+    const size_t lo = static_cast<size_t>(std::floor(idx));
+    const size_t hi = static_cast<size_t>(std::ceil(idx));
+    if (lo == hi) return vals[lo];
+    const double t = idx - static_cast<double>(lo);
+    return vals[lo] * (1.0 - t) + vals[hi] * t;
+}
+
+CrossingAggregate aggregateCrossings(const std::vector<CrossingEstimate>& crossings) {
+    CrossingAggregate out;
+    std::vector<double> pcs;
+    std::vector<double> lows;
+    std::vector<double> highs;
+    for (const auto& c : crossings) {
+        if (c.quality >= 0.5) {
+            pcs.push_back(c.pc);
+            lows.push_back(c.pc_low);
+            highs.push_back(c.pc_high);
+        }
+    }
+    if (pcs.empty()) {
+        for (const auto& c : crossings) {
+            pcs.push_back(c.pc);
+            lows.push_back(c.pc_low);
+            highs.push_back(c.pc_high);
+        }
+    }
+    if (pcs.empty()) return out;
+    out.valid = true;
+    out.pc = percentile(pcs, 0.5);
+    out.pc_low = percentile(lows, 0.5);
+    out.pc_high = percentile(highs, 0.5);
+    return out;
+}
+
+std::string crossingPairsString(const std::vector<CrossingEstimate>& crossings) {
+    std::set<std::pair<int, int>> pairs;
+    for (const auto& c : crossings) pairs.insert({c.d1, c.d2});
+    std::ostringstream oss;
+    bool first = true;
+    for (const auto& pr : pairs) {
+        if (!first) oss << ", ";
+        first = false;
+        oss << "d=" << pr.first << " vs " << pr.second;
+    }
+    return oss.str();
+}
+
+bool writeTextFile(const std::string& path, const std::string& content) {
+    std::ofstream out(path, std::ios::out | std::ios::trunc);
+    if (!out.is_open()) return false;
+    out << content;
+    out.flush();
+    return true;
+}
+
+std::string makeScalingReportMarkdown(const SurfaceThresholdConfig& cfg,
+                                      const std::vector<SweepPoint>& pts,
+                                      const std::vector<CrossingEstimate>& crossings,
+                                      const CrossingAggregate& agg,
+                                      const CollapseFitResult* collapse) {
+    std::set<int> dset;
+    for (const auto& pt : pts) dset.insert(pt.d);
+
+    std::ostringstream oss;
+    oss << "# LiDMaS+ v0.9 Finite-Size Scaling Report\n\n";
+    oss << "## Configuration\n\n";
+    oss << "- decoder: `" << cfg.decoder_name << "`\n";
+    oss << "- mwpm_graph: `" << cfg.mwpm_graph << "`\n";
+    oss << "- weight_mode: `" << cfg.weight_mode << "`\n";
+    oss << "- p range: [" << cfg.p_start << ", " << cfg.p_end << "] step " << cfg.p_step << "\n";
+    oss << "- bootstrap_samples: " << cfg.scaling_bootstrap << "\n";
+    oss << "- scaling_seed: " << cfg.scaling_seed << "\n";
+    oss << "- grid: pc=" << cfg.grid_pc << ", nu=" << cfg.grid_nu << "\n";
+    oss << "- smoothing eps: " << cfg.ler_smooth_eps << "\n\n";
+
+    oss << "## Distances\n\n- ";
+    bool first = true;
+    for (int d : dset) {
+        if (!first) oss << ", ";
+        first = false;
+        oss << d;
+    }
+    oss << "\n\n";
+
+    oss << "## Crossing Estimates\n\n";
+    if (crossings.empty()) {
+        oss << "No crossings detected. Consider increasing p-resolution or trials.\n\n";
+    } else {
+        oss << "| d1 | d2 | p_c | p_c_low | p_c_high | quality |\n";
+        oss << "|---:|---:|---:|---:|---:|---:|\n";
+        for (const auto& c : crossings) {
+            oss << "|" << c.d1
+                << "|" << c.d2
+                << "|" << std::fixed << std::setprecision(6) << c.pc
+                << "|" << c.pc_low
+                << "|" << c.pc_high
+                << "|" << std::setprecision(3) << c.quality << "|\n";
+        }
+        if (agg.valid) {
+            oss << "\nAggregate crossing median p_c = " << std::setprecision(6) << agg.pc
+                << " [" << agg.pc_low << ", " << agg.pc_high << "]\n\n";
+        }
+    }
+
+    oss << "## Collapse Fit\n\n";
+    if (collapse == nullptr || !std::isfinite(collapse->cost)) {
+        oss << "Collapse fit unavailable.\n";
+    } else {
+        oss << "- Best p_c = " << std::fixed << std::setprecision(6) << collapse->pc
+            << " [" << collapse->pc_low << ", " << collapse->pc_high << "]\n";
+        oss << "- Best nu = " << collapse->nu
+            << " [" << collapse->nu_low << ", " << collapse->nu_high << "]\n";
+        oss << "- Collapse cost = " << std::setprecision(8) << collapse->cost << "\n";
+        oss << "- Bootstrap samples = " << collapse->bootstrap_samples << "\n";
+    }
+    return oss.str();
+}
+
+std::string makeScalingSummaryJson(uint64_t seed,
+                                   const std::vector<CrossingEstimate>& crossings,
+                                   const CrossingAggregate& agg,
+                                   const CollapseFitResult* collapse) {
+    std::ostringstream oss;
+    oss << "{\n";
+    oss << "  \"seed\": " << seed << ",\n";
+    oss << "  \"crossings\": [\n";
+    for (size_t i = 0; i < crossings.size(); ++i) {
+        const auto& c = crossings[i];
+        oss << "    {\"d1\": " << c.d1
+            << ", \"d2\": " << c.d2
+            << ", \"pc\": " << std::setprecision(12) << c.pc
+            << ", \"pc_low\": " << c.pc_low
+            << ", \"pc_high\": " << c.pc_high
+            << ", \"quality\": " << c.quality << "}";
+        if (i + 1 < crossings.size()) oss << ",";
+        oss << "\n";
+    }
+    oss << "  ],\n";
+    if (agg.valid) {
+        oss << "  \"crossing_median_pc\": " << agg.pc << ",\n";
+        oss << "  \"crossing_median_pc_low\": " << agg.pc_low << ",\n";
+        oss << "  \"crossing_median_pc_high\": " << agg.pc_high << ",\n";
+    } else {
+        oss << "  \"crossing_median_pc\": null,\n";
+        oss << "  \"crossing_median_pc_low\": null,\n";
+        oss << "  \"crossing_median_pc_high\": null,\n";
+    }
+    if (collapse != nullptr && std::isfinite(collapse->cost)) {
+        oss << "  \"collapse\": {\n";
+        oss << "    \"pc\": " << collapse->pc << ",\n";
+        oss << "    \"nu\": " << collapse->nu << ",\n";
+        oss << "    \"cost\": " << collapse->cost << ",\n";
+        oss << "    \"pc_low\": " << collapse->pc_low << ",\n";
+        oss << "    \"pc_high\": " << collapse->pc_high << ",\n";
+        oss << "    \"nu_low\": " << collapse->nu_low << ",\n";
+        oss << "    \"nu_high\": " << collapse->nu_high << ",\n";
+        oss << "    \"bootstrap_samples\": " << collapse->bootstrap_samples << "\n";
+        oss << "  }\n";
+    } else {
+        oss << "  \"collapse\": null\n";
+    }
+    oss << "}\n";
+    return oss.str();
 }
 
 std::vector<double> makePGrid(double p_start, double p_end, double p_step) {
@@ -915,13 +1093,15 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
     const int resolved_min_trials = fixed_mode
         ? std::max(1, cfg.trials)
         : std::max(1, std::min(cfg.min_trials, resolved_max_trials));
+    constexpr int kFixedBatchTrials = 25;
     const int resolved_batch_trials = fixed_mode
-        ? std::max(1, cfg.trials)
+        ? std::max(1, std::min(cfg.trials, kFixedBatchTrials))
         : std::max(1, cfg.batch_trials);
 
     constexpr double kEps = 1e-12;
     std::atomic<bool> first_failure_dumped{false};
-    std::map<int, std::vector<ThresholdPoint>> results_by_distance;
+    std::vector<SweepPoint> scaling_points;
+    scaling_points.reserve(static_cast<size_t>(cfg.distances.size() * p_values.size()));
     for (int d : cfg.distances) {
         SurfaceCode code(d);
         SurfacePipeline pipeline(code);
@@ -969,11 +1149,23 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             dec_cfg.double_params["llr_clamp_max"] = cfg.llr_clamp_max;
             dec_cfg.double_params["mwpm_weight_scale"] = cfg.mwpm_weight_scale;
 
+            std::cout << "running d=" << d
+                      << " p=" << std::fixed << std::setprecision(3) << p
+                      << " target_trials=" << resolved_max_trials
+                      << " batch=" << resolved_batch_trials
+                      << "\n";
+
             PointAccum accum;
             bool ci_met = false;
+            const long long progress_step = fixed_mode
+                ? std::max<long long>(1, resolved_batch_trials)
+                : std::max<long long>(1, static_cast<long long>(resolved_batch_trials) * 5LL);
+            long long next_progress = progress_step;
             while (accum.trials < resolved_max_trials) {
                 const long long remaining = static_cast<long long>(resolved_max_trials) - accum.trials;
-                const long long need_min = std::max<long long>(0, static_cast<long long>(resolved_min_trials) - accum.trials);
+                const long long need_min = fixed_mode
+                    ? 0LL
+                    : std::max<long long>(0, static_cast<long long>(resolved_min_trials) - accum.trials);
                 int batch = static_cast<int>(std::min<long long>(remaining, std::max<long long>(resolved_batch_trials, need_min)));
                 if (batch <= 0) break;
 
@@ -993,10 +1185,18 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                     first_failure_dumped);
                 mergeAccum(accum, batch_acc);
 
-                if (fixed_mode) {
-                    ci_met = true;
-                    break;
+                if (accum.trials >= next_progress && accum.trials < resolved_max_trials) {
+                    std::cout << "progress d=" << d
+                              << " p=" << std::fixed << std::setprecision(3) << p
+                              << " trials=" << accum.trials;
+                    if (fixed_mode) {
+                        std::cout << "/" << resolved_max_trials;
+                    }
+                    std::cout << "\n";
+                    next_progress += progress_step;
                 }
+
+                if (fixed_mode) continue;
                 if (accum.trials < resolved_min_trials) continue;
 
                 PointStats current = finalizePoint(accum, cfg.target_ci_halfwidth, cfg.target_rel_ci);
@@ -1036,8 +1236,14 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             if (p_index == 0) smoothed_ler = stats.ler;
             else smoothed_ler = std::max(smoothed_ler, stats.ler);
             const double ler_report = cfg.monotonic_smooth ? smoothed_ler : stats.ler;
-            results_by_distance[d].push_back(
-                ThresholdPoint{d, p, stats.ler, stats.ler_lo95, stats.ler_hi95});
+            SweepPoint sp;
+            sp.d = d;
+            sp.p = p;
+            sp.trials = static_cast<int>(stats.trials);
+            sp.ler = stats.ler;
+            sp.ci_low = stats.ler_lo95;
+            sp.ci_high = stats.ler_hi95;
+            scaling_points.push_back(sp);
 
             out << d << ","
                 << p << ","
@@ -1071,61 +1277,117 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
     }
 
     const bool do_estimate_threshold = cfg.auto_threshold || cfg.estimate_threshold;
+    std::vector<CrossingEstimate> crossings;
+    CrossingAggregate crossing_agg;
+    CollapseFitResult collapse_fit{};
+    bool have_collapse = false;
+
     if (do_estimate_threshold) {
-        const std::vector<CrossingPoint> crossings =
-            detectPairwiseCrossings(results_by_distance, cfg.distances);
+        ScalingOutputs cross_out = ScalingAnalysis::run_all(
+            scaling_points,
+            true,
+            false,
+            cfg.monotonic_smooth,
+            cfg.ler_smooth_eps,
+            cfg.scaling_bootstrap,
+            cfg.scaling_seed);
+        crossings = std::move(cross_out.crossings);
+        crossing_agg = aggregateCrossings(crossings);
 
         std::cout << "--------------------------------------\n";
         std::cout << "Threshold Crossing Estimate\n";
-        if (!crossings.empty()) {
-            for (const auto& c : crossings) {
-                std::cout << "pair d=" << c.d_small << " vs " << c.d_large
-                          << " crossing p*=" << std::fixed << std::setprecision(6)
-                          << c.p_cross << "\n";
-            }
-
-            const double sum =
-                std::accumulate(crossings.begin(), crossings.end(), 0.0,
-                                [](double a, const CrossingPoint& c) { return a + c.p_cross; });
-            const double mean = sum / static_cast<double>(crossings.size());
-            double var = 0.0;
-            for (const auto& c : crossings) {
-                const double dlt = c.p_cross - mean;
-                var += dlt * dlt;
-            }
-            if (crossings.size() > 1) {
-                var /= static_cast<double>(crossings.size() - 1);
-            } else {
-                var = 0.0;
-            }
-            const double sd = std::sqrt(std::max(0.0, var));
-            std::cout << "Pairs used: " << formatPairsUsed(crossings) << "\n";
-            std::cout << "Estimated p_c = " << std::setprecision(6) << mean
-                      << " +/- " << std::setprecision(6) << sd << "\n";
-            std::cout << "Method: pairwise crossing (d pairs used: "
-                      << formatPairsUsed(crossings) << ")\n";
-        } else {
+        if (crossings.empty()) {
             std::cout << "WARNING: no crossings found. Increase p resolution "
                       << "(smaller --p_step) or widen p range.\n";
+        } else {
+            for (const auto& c : crossings) {
+                std::cout << "pair d=" << c.d1 << " vs " << c.d2
+                          << " crossing p*=" << std::fixed << std::setprecision(6) << c.pc
+                          << " [" << c.pc_low << "," << c.pc_high << "]"
+                          << " q=" << std::setprecision(3) << c.quality
+                          << "\n";
+            }
+            if (crossing_agg.valid) {
+                std::cout << "Pairs used: " << crossingPairsString(crossings) << "\n";
+                std::cout << "Estimated p_c = " << std::setprecision(6) << crossing_agg.pc
+                          << " [" << crossing_agg.pc_low << ", " << crossing_agg.pc_high << "]\n";
+                std::cout << "Method: pairwise crossing (d pairs used: "
+                          << crossingPairsString(crossings) << ")\n";
+            }
         }
         std::cout << "--------------------------------------\n";
+    } else if (cfg.scaling_fit) {
+        // Used only to seed the collapse optimizer when threshold estimation is not explicitly requested.
+        crossings = ScalingAnalysis::estimate_crossings(
+            scaling_points, cfg.monotonic_smooth, cfg.ler_smooth_eps, 1);
+        crossing_agg = aggregateCrossings(crossings);
     }
 
     if (cfg.scaling_fit) {
-        const double min_p = p_values.front();
-        const double max_p = p_values.back();
-        const ScalingFitResult fit = runScalingFit(results_by_distance, min_p, max_p);
+        double pc_min = cfg.pc_min_set ? cfg.pc_min : p_values.front();
+        double pc_max = cfg.pc_max_set ? cfg.pc_max : p_values.back();
+        if (pc_max < pc_min) std::swap(pc_min, pc_max);
+
+        double nu_min = cfg.nu_min_set ? cfg.nu_min : 0.5;
+        double nu_max = cfg.nu_max_set ? cfg.nu_max : 3.0;
+        if (nu_max < nu_min) std::swap(nu_min, nu_max);
+
+        const double pc_init = crossing_agg.valid ? crossing_agg.pc : 0.5 * (pc_min + pc_max);
+        const double nu_init = 1.0;
+
+        collapse_fit = ScalingAnalysis::fit_collapse(
+            scaling_points,
+            cfg.monotonic_smooth,
+            cfg.ler_smooth_eps,
+            pc_init,
+            nu_init,
+            pc_min,
+            pc_max,
+            nu_min,
+            nu_max,
+            cfg.grid_pc,
+            cfg.grid_nu,
+            cfg.scaling_bootstrap,
+            cfg.scaling_seed);
+        have_collapse = std::isfinite(collapse_fit.cost);
 
         std::cout << "--------------------------------------\n";
         std::cout << "Finite-Size Scaling Fit\n";
-        if (fit.valid) {
-            std::cout << "Best p_c = " << std::fixed << std::setprecision(6) << fit.p_c << "\n";
-            std::cout << "Best nu  = " << std::fixed << std::setprecision(6) << fit.nu << "\n";
-            std::cout << "Collapse cost = " << std::fixed << std::setprecision(8) << fit.cost << "\n";
+        if (crossing_agg.valid) {
+            std::cout << "Crossing median p_c = " << std::fixed << std::setprecision(6)
+                      << crossing_agg.pc
+                      << " [" << crossing_agg.pc_low << ", " << crossing_agg.pc_high << "]\n";
+        }
+        if (have_collapse) {
+            std::cout << "Best p_c = " << std::fixed << std::setprecision(6)
+                      << collapse_fit.pc
+                      << " [" << collapse_fit.pc_low << ", " << collapse_fit.pc_high << "]\n";
+            std::cout << "Best nu = " << std::fixed << std::setprecision(6)
+                      << collapse_fit.nu
+                      << " [" << collapse_fit.nu_low << ", " << collapse_fit.nu_high << "]\n";
+            std::cout << "Collapse cost = " << std::fixed << std::setprecision(8)
+                      << collapse_fit.cost << "\n";
         } else {
             std::cout << "WARNING: scaling fit unavailable (insufficient threshold data).\n";
         }
         std::cout << "--------------------------------------\n";
+    }
+
+    if (do_estimate_threshold || cfg.scaling_fit) {
+        const std::string report_md = makeScalingReportMarkdown(
+            cfg, scaling_points, crossings, crossing_agg, have_collapse ? &collapse_fit : nullptr);
+        const std::string summary_json = makeScalingSummaryJson(
+            cfg.scaling_seed, crossings, crossing_agg, have_collapse ? &collapse_fit : nullptr);
+        if (!writeTextFile(cfg.scaling_report, report_md)) {
+            std::cout << "WARNING: failed to write scaling report to " << cfg.scaling_report << "\n";
+        } else {
+            std::cout << "scaling report written to " << cfg.scaling_report << "\n";
+        }
+        if (!writeTextFile(cfg.scaling_json, summary_json)) {
+            std::cout << "WARNING: failed to write scaling summary JSON to " << cfg.scaling_json << "\n";
+        } else {
+            std::cout << "scaling summary JSON written to " << cfg.scaling_json << "\n";
+        }
     }
 
     out.flush();
