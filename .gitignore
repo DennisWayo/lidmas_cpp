@@ -37,6 +37,8 @@ Temporary/
 *.txt
 !CMakeLists.txt
 *.log
+plot_threshold.py
+threshold_plot.png
 
 # macOS
 .DS_Store
