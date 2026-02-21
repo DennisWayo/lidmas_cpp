@@ -1,0 +1,7 @@
+# Generated outputs from example runs
+results/*
+!results/.gitkeep
+
+# Local Python artifacts inside examples/
+**/__pycache__/
+**/*.pyc

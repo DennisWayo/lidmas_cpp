@@ -109,6 +109,12 @@ std::string normalizeDecoderName(const std::string& name) {
     return "mwpm";
 }
 
+bool fileExists(const std::string& path) {
+    if (path.empty()) return false;
+    std::ifstream in(path);
+    return in.good();
+}
+
 const char* noiseModeName(NoiseMode mode) {
     return (mode == NoiseMode::Hybrid) ? "hybrid" : "pauli";
 }
@@ -1231,6 +1237,10 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
     if (hybrid_mode && decoder_name != "mwpm") {
         std::cout << "WARNING: hybrid mode uses MWPM decode path; forcing decoder=mwpm\n";
         decoder_name = "mwpm";
+    }
+    if (!hybrid_mode && decoder_name == "neural_mwpm" && !fileExists(cfg.neural_model_path)) {
+        std::cerr << "ERROR: neural_mwpm requires --neural_model <path>\n";
+        return 1;
     }
     std::string mwpm_graph = cfg.mwpm_graph;
     if (mwpm_graph != "full" && mwpm_graph != "simple") {

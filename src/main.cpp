@@ -5,6 +5,7 @@
 
 #include <iomanip>
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -77,6 +78,20 @@ std::vector<std::string> toArgs(int argc, char** argv) {
 
 bool hasFlag(const std::vector<std::string>& args, const std::string& flag) {
     return std::find(args.begin(), args.end(), flag) != args.end();
+}
+
+bool fileExists(const std::string& path) {
+    if (path.empty()) return false;
+    std::ifstream in(path);
+    return in.good();
+}
+
+bool validateNeuralModelRequirement(const std::string& decoder_name,
+                                    const std::string& neural_model_path) {
+    if (decoder_name != "neural_mwpm") return true;
+    if (fileExists(neural_model_path)) return true;
+    std::cerr << "ERROR: neural_mwpm requires --neural_model <path>\n";
+    return false;
 }
 
 std::string getValuePrefix(const std::vector<std::string>& args, const std::string& prefix) {
@@ -274,19 +289,19 @@ std::vector<int> parseDistancesCsv(const std::string& s) {
     return out;
 }
 
-void runQecSurfaceDemo(const std::string& mode,
-                       const std::string& weight_mode,
-                       const std::string& mwpm_graph,
-                       bool uf_weighted,
-                       const std::string& neural_weights_path,
-                       const std::string& neural_model_path,
-                       double llr_p_data,
-                       double llr_p_meas,
-                       double llr_p_idle,
-                       double llr_clamp_min,
-                       double llr_clamp_max,
-                       double mwpm_weight_scale,
-                       const PluginRegistry& plugins) {
+int runQecSurfaceDemo(const std::string& mode,
+                      const std::string& weight_mode,
+                      const std::string& mwpm_graph,
+                      bool uf_weighted,
+                      const std::string& neural_weights_path,
+                      const std::string& neural_model_path,
+                      double llr_p_data,
+                      double llr_p_meas,
+                      double llr_p_idle,
+                      double llr_clamp_min,
+                      double llr_clamp_max,
+                      double mwpm_weight_scale,
+                      const PluginRegistry& plugins) {
     std::string decoder = mode;
     if (decoder.empty()) decoder = "stub";
     if (decoder == "mwpm_stub") decoder = "stub";
@@ -295,6 +310,9 @@ void runQecSurfaceDemo(const std::string& mode,
         std::cout << "Unknown surface demo mode '" << mode
                   << "', falling back to stub.\n";
         decoder = "stub";
+    }
+    if (!validateNeuralModelRequirement(decoder, neural_model_path)) {
+        return 1;
     }
     std::cout << (decoder == "mwpm"
                      ? "LiDMaS+ Surface MWPM Demo (experimental)\n"
@@ -330,6 +348,7 @@ void runQecSurfaceDemo(const std::string& mode,
                   << "  logical_fail_rate=" << std::setprecision(6) << s.logical_fail_rate
                   << "\n";
     }
+    return 0;
 }
 
 void runDebugDecodeLog(const BinaryMatrix& H,
@@ -524,7 +543,15 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (hasFlag(args, "--smoke")) {
-        const bool ok = run_smoke_tests();
+        SmokeConfig smoke_cfg;
+        smoke_cfg.distance = 3;
+        smoke_cfg.p = 0.02;
+        smoke_cfg.trials = 50;
+        smoke_cfg.seed = 1337;
+        smoke_cfg.decoder_name = "mwpm";
+        smoke_cfg.mode = "pauli";
+        smoke_cfg.weight_mode = "uniform";
+        const bool ok = run_smoke_tests(smoke_cfg);
         return ok ? 0 : 1;
     }
     if (hasFlag(args, "--surface_threshold")) {
@@ -532,7 +559,8 @@ int main(int argc, char** argv) {
         bool adaptive_requested = false;
         const std::string decoder = getValuePrefix(args, "--decoder=");
         if (!decoder.empty()) cfg.decoder_name = decoder;
-        const std::string d_csv = getValuePrefix(args, "--d=");
+        std::string d_csv = getValuePrefix(args, "--d=");
+        if (d_csv.empty()) d_csv = getValuePrefix(args, "--d_list=");
         if (!d_csv.empty()) {
             const auto dlist = parseDistancesCsv(d_csv);
             if (!dlist.empty()) cfg.distances = dlist;
@@ -556,7 +584,8 @@ int main(int argc, char** argv) {
         }
         const std::string seed = getValuePrefix(args, "--seed=");
         if (!seed.empty()) cfg.seed = static_cast<uint64_t>(std::stoull(seed));
-        const std::string out = getValuePrefix(args, "--out=");
+        std::string out = getValuePrefix(args, "--out=");
+        if (out.empty()) out = getValuePrefix(args, "--output=");
         if (!out.empty()) cfg.out_csv = out;
         if (hasFlag(args, "--monotonic_smooth")) cfg.monotonic_smooth = true;
         cfg.weight_mode = weight_mode;
@@ -686,6 +715,9 @@ int main(int argc, char** argv) {
         cfg.adaptive_enabled = adaptive_requested;
         cfg.neural_weights_path = neural_weights_path;
         cfg.neural_model_path = neural_model_path;
+        if (!validateNeuralModelRequirement(cfg.decoder_name, cfg.neural_model_path)) {
+            return 1;
+        }
         return SurfaceThresholdRunner::run(cfg, plugins);
     }
 
@@ -698,10 +730,9 @@ int main(int argc, char** argv) {
     const std::string surface_demo_mode = getValuePrefix(args, "--surface_demo=");
     if (has_surface_demo_flag || !surface_demo_mode.empty()) {
         const std::string mode = surface_demo_mode.empty() ? "stub" : surface_demo_mode;
-        runQecSurfaceDemo(mode, weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
-                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
-                          plugins);
-        return 0;
+        return runQecSurfaceDemo(mode, weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
+                                 llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                                 plugins);
     }
 
     const std::string qec_mode = getValuePrefix(args, "--qec=");
@@ -710,28 +741,24 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (qec_mode == "surface_stub") {
-        runQecSurfaceDemo("stub", weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
-                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
-                          plugins);
-        return 0;
+        return runQecSurfaceDemo("stub", weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
+                                 llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                                 plugins);
     }
     if (qec_mode == "surface_mwpm") {
-        runQecSurfaceDemo("mwpm", weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
-                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
-                          plugins);
-        return 0;
+        return runQecSurfaceDemo("mwpm", weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
+                                 llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                                 plugins);
     }
     if (qec_mode == "surface_uf") {
-        runQecSurfaceDemo("uf", weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
-                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
-                          plugins);
-        return 0;
+        return runQecSurfaceDemo("uf", weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
+                                 llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                                 plugins);
     }
     if (qec_mode == "surface_neural_mwpm") {
-        runQecSurfaceDemo("neural_mwpm", weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
-                          llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
-                          plugins);
-        return 0;
+        return runQecSurfaceDemo("neural_mwpm", weight_mode, mwpm_graph, uf_weighted, neural_weights_path, neural_model_path,
+                                 llr_p_data, llr_p_meas, llr_p_idle, llr_clamp_min, llr_clamp_max, mwpm_weight_scale,
+                                 plugins);
     }
 
     std::cout << "LiDMaS+ v0.6\n";

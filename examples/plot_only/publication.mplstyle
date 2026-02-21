@@ -1,0 +1,18 @@
+figure.figsize: 8.0, 5.2
+figure.dpi: 120
+savefig.dpi: 600
+font.family: serif
+font.size: 12
+axes.titlesize: 14
+axes.labelsize: 13
+axes.linewidth: 1.1
+axes.grid: True
+grid.alpha: 0.3
+grid.linestyle: --
+legend.frameon: True
+legend.framealpha: 0.9
+legend.fontsize: 11
+xtick.labelsize: 11
+ytick.labelsize: 11
+lines.linewidth: 2.0
+lines.markersize: 4.8
