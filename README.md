@@ -8,9 +8,9 @@
 
 **Logical Injection & Decoding Modeling System**
 
-LiDMaS+ is a C++ research simulator for quantum error-correction studies, with a focus on
+LiDMaS+ is a C++ research simulator software for quantum error-correction studies, focused on
 surface-code threshold experiments under both discrete Pauli noise and hybrid
-continuous-variable (CV) + discrete noise models.
+continuous-variable (CV)-discrete noise models.
 
 ## Statement of Need
 
