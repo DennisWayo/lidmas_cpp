@@ -1,0 +1,10 @@
+./quick_smoke/run.sh
+./plot_only/run.sh
+./pauli_threshold/run.sh
+./adaptive_ci/run.sh
+./scaling_fit/run.sh
+./hybrid_threshold/run.sh
+./decoder_comparison/run.sh
+./failure_debug/run.sh
+./cv_demo/run.sh
+./reproducibility_seed/run.sh
