@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Stop execution immediately if any command fails
-set -e
 
 echo "=== Starting execution of all examples ==="
 
