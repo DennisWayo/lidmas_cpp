@@ -61,6 +61,3 @@ joss/
 
 # LaTeX artifacts and drafts
 *.tex
-
-# Paper assets (kept outside tracked source tree)
-paper/figures/
