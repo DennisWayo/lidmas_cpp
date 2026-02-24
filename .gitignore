@@ -51,3 +51,7 @@ threshold_plot.png
 # Python
 __pycache__/
 *.pyc
+
+# Documentation builds
+site/
+.venv-docs/
