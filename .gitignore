@@ -55,3 +55,9 @@ __pycache__/
 # Documentation builds
 site/
 .venv-docs/
+
+# JOSS working files
+joss/
+
+# LaTeX artifacts and drafts
+*.tex
