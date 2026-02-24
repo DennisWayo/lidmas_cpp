@@ -59,5 +59,8 @@ site/
 # JOSS working files
 joss/
 
+# JOSS paper figures (kept out of repository)
+paper/figures/
+
 # LaTeX artifacts and drafts
 *.tex
