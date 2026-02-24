@@ -1,0 +1,402 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\newcommand{\F}{\mathbb{F}_2}
+\newcommand{\Prb}{\mathbb{P}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\ind}[1]{\mathbf{1}\!\left[#1\right]}
+
+\title{LiDMaS+ Lecture Notes:\\From Physical Noise to Threshold Inference}
+\author{
+Dennis Delali Kwesi Wayo\\
+\href{https://orcid.org/}{ORCID: https://orcid.org/}
+}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Purpose and Scope}
+LiDMaS+ is a simulator-oriented framework for threshold studies in planar surface codes, with both Pauli and hybrid CV-discrete noise paths \cite{wayo2026lidmas}. These notes explain how the implemented mathematical expressions are derived and why each expression appears in the pipeline.
+
+The teaching goal is to make the equations ``narrative'':
+\begin{enumerate}[label=\arabic*.]
+  \item represent physical errors in algebraic form,
+  \item infer likely causes from syndromes using a decoder objective,
+  \item estimate logical failure rates and threshold indicators statistically.
+\end{enumerate}
+
+\paragraph{How to read these notes (self-study mode).}
+For each section, ask three questions:
+\begin{enumerate}[label=\arabic*.]
+  \item What object is being modeled?
+  \item What optimization or estimator is being applied?
+  \item What quantity is exported to threshold plots?
+\end{enumerate}
+
+\section{Algebraic Backbone Over \texorpdfstring{$\F$}{F2}}
+Pauli error presence/absence is binary, so the natural field is
+\begin{equation}
+\F = \{0,1\},\qquad a\oplus b=(a+b)\bmod 2.
+\end{equation}
+This choice ensures parity constraints and syndrome equations are exact modulo-2 statements.
+
+For $H\in\F^{m\times n}$ and $e\in\F^n$:
+\begin{equation}
+(He)_i=\sum_j H_{ij}e_j \bmod 2.
+\end{equation}
+If $(He)_i=1$, check $i$ detects odd parity among incident error bits.
+
+\paragraph{Variables used throughout.}
+\begin{equation}
+d:\text{code distance},\quad n:\text{data qubits},\quad m_X,m_Z:\text{check counts},
+\end{equation}
+\begin{equation}
+p:\text{Pauli rate},\quad \sigma:\text{CV Gaussian scale},\quad N:\text{trials},\quad k:\text{failures}.
+\end{equation}
+
+\section{Surface-Code Geometry in the LiDMaS+ Implementation}
+The surface-code setting follows the standard topological framework \cite{surfacecode1998}. For odd $d\ge 3$, LiDMaS+ uses:
+\begin{equation}
+n=2d(d-1),\qquad m_X=d^2,\qquad m_Z=(d-1)^2.
+\end{equation}
+Parity-check matrices are
+\begin{equation}
+H_X\in\F^{m_X\times n},\qquad H_Z\in\F^{m_Z\times n}.
+\end{equation}
+Given X- and Z-sector data errors $e_X,e_Z\in\F^n$:
+\begin{equation}
+s_Z = H_Z e_X \bmod 2,\qquad s_X = H_X e_Z \bmod 2.
+\end{equation}
+
+\paragraph{Interpretation.}
+This cross-coupling is physically expected: Z-type stabilizers are sensitive to X-type faults and vice versa.
+
+\section{Logical Predicate and Failure Variable}
+Let logical supports be $L_X,L_Z\in\F^n$ and define
+\begin{equation}
+\langle a,b\rangle=\sum_i a_ib_i\bmod 2.
+\end{equation}
+After correction $c$, the residual is $e^{\mathrm{res}}=e\oplus c$.
+
+In the current threshold harness, the implementation-aligned logical event is
+\begin{equation}
+\mathcal{L}=
+\ind{
+\langle e_X\oplus c,L_X\rangle=1
+\ \lor\
+\langle e_X\oplus c,L_Z\rangle=1
+}.
+\end{equation}
+Hence $\mathcal{L}=1$ marks one logical failure trial.
+
+\paragraph{Why this matters.}
+All downstream statistics use $\mathcal{L}$ as the Bernoulli outcome. If you change this predicate, every reported threshold curve changes.
+
+\section{Noise Modeling: Pauli and Hybrid CV Paths}
+\subsection{Discrete Pauli mode}
+Independent Bernoulli draws:
+\begin{equation}
+\Prb(e_{X,i}=1)=p,\qquad \Prb(e_{Z,i}=1)=p.
+\end{equation}
+For the active Z-syndrome threshold path, $e_X$ drives
+\begin{equation}
+s_Z=H_Ze_X\bmod 2.
+\end{equation}
+
+\subsection{Hybrid mode with GKP-style digitization}
+Hybrid CV motivation follows GKP-style lattice quantization ideas \cite{gkp2001}:
+\begin{equation}
+\Delta q\sim\mathcal N(0,\sigma^2),\qquad
+\Delta p\sim\mathcal N(0,\sigma^2).
+\end{equation}
+Using $\lambda=\sqrt{\pi}$:
+\begin{equation}
+n_q=\mathrm{round}\!\left(\frac{\Delta q}{\lambda}\right),\qquad
+n_p=\mathrm{round}\!\left(\frac{\Delta p}{\lambda}\right).
+\end{equation}
+Binary flips are parity bits:
+\begin{equation}
+x_{\mathrm{flip}}=|n_q|\bmod 2,\qquad z_{\mathrm{flip}}=|n_p|\bmod 2.
+\end{equation}
+These flips define effective $(e_X,e_Z)$ passed to the same syndrome/decoder pipeline.
+
+\paragraph{Self-check.}
+The key conceptual move is a \emph{continuous-to-discrete map}. Once digitized, the decoding algebra is identical to Pauli mode.
+
+\section{Decoder Objective I: MWPM}
+Matching-based decoding is a standard reference strategy in surface-code benchmarking \cite{pymatching2021}.
+
+\subsection{Defect graph and costs}
+Defects are checks with syndrome value 1. For defects $i,j$:
+\begin{equation}
+d_{ij}=|x_i-x_j|+|y_i-y_j|.
+\end{equation}
+Uniform mode:
+\begin{equation}
+W_{ij}=d_{ij}.
+\end{equation}
+Weighted mode:
+\begin{equation}
+W_{ij}=\max\!\left\{1,\mathrm{round}\!\big(\lambda_w d_{ij}w(i,j)\big)\right\},
+\end{equation}
+and boundary edges:
+\begin{equation}
+W_{iB}=\max\!\left\{1,\mathrm{round}\!\big(\lambda_w d_{iB}w(i,i)\big)\right\}.
+\end{equation}
+
+\subsection{Why distance behaves like log-likelihood}
+If each path segment has effective error probability $p_e<1/2$, then for path length $\ell$:
+\begin{equation}
+-\log \Prb(\text{path}) \propto \ell\log\frac{1-p_e}{p_e}.
+\end{equation}
+So minimizing weighted path length is equivalent to maximizing likelihood under this independent-edge approximation.
+
+\subsection{Boundary-augmented matching matrix}
+For $k$ defects, LiDMaS+ builds a $2k\times 2k$ matrix:
+\begin{align}
+C_{ij} &= W_{ij}, && i,j<k,\ i\neq j,\\
+C_{i,k+i} &= W_{iB}, && i<k,\\
+C_{k+i,k+j} &= 0, && i\neq j.
+\end{align}
+Solve
+\begin{equation}
+\min_{M\in\mathcal M}\sum_{(u,v)\in M}C_{uv},
+\end{equation}
+then lift matched pairs/boundary links to lattice paths and toggle them into $c\in\F^n$.
+Consistency check:
+\begin{equation}
+Hc=s\bmod 2.
+\end{equation}
+
+\paragraph{Implementation insight.}
+The syndrome-consistency invariant is the primary correctness guardrail: even a low-cost match is invalid if it does not reproduce syndrome parity.
+
+\section{Decoder Objective II: Union-Find + Peeling}
+Union-Find decoding is near-linear-time and widely used for topological-code workloads \cite{unionfind2017}. LiDMaS+ follows:
+\begin{enumerate}[label=\arabic*.]
+  \item start odd clusters at defect vertices,
+  \item grow clusters and merge on collisions,
+  \item connect unresolved odd roots to boundaries,
+  \item build a forest over selected edges,
+  \item peel leaf-by-leaf to generate correction edges.
+\end{enumerate}
+
+Leaf rule for $e=(v,u)$:
+\begin{quote}
+if parity$(v)=1$, select $e$ and toggle parity at $u$.
+\end{quote}
+Output correction is again validated by $Hc=s\bmod 2$.
+
+\section{Reliability Fields and Neural Guidance}
+\subsection{Uniform and LLR fields}
+Uniform:
+\begin{equation}
+w(i,j)=1.
+\end{equation}
+LLR-inspired:
+\begin{equation}
+w_{\mathrm{LLR}}(p_e)=\max\!\left(0,\log\frac{1-p_e}{p_e}\right),\qquad p_e\in(0,1).
+\end{equation}
+Implementation maps non-self edges via $p_{\mathrm{data}}$ and boundary/self proxies via $p_{\mathrm{idle}}$.
+
+\paragraph{Interpretation.}
+Large $w_{\mathrm{LLR}}$ means ``more confidence in no error,'' so corresponding path choices are penalized more strongly.
+
+\subsection{Neural-guided MWPM plugin}
+Feature vector:
+\begin{equation}
+\phi=(|\Delta x|,|\Delta y|,b),\qquad b\in\{0,1\}.
+\end{equation}
+Scale model:
+\begin{equation}
+s(\phi)=\mathrm{clip}\!\left(\beta_0+\beta_1m+\beta_2|\Delta x|+\beta_3|\Delta y|+\beta_4b,\ s_{\min},s_{\max}\right),
+\end{equation}
+\begin{equation}
+\hat W=W\,s(\phi).
+\end{equation}
+Alternative absolute model:
+\begin{equation}
+\hat W=\max(0,\alpha m+\beta).
+\end{equation}
+
+\paragraph{What this changes mathematically.}
+The combinatorial solver stays the same; only edge costs are replaced by model-informed surrogates.
+
+\section{Optional BP Layer (Shared Inference Infrastructure)}
+LiDMaS+ also carries BP-style equations used in LDPC/CSS contexts and related simulator modules \cite{stim2021}.
+
+For BSC crossover $p\in(0,1/2)$:
+\begin{equation}
+L_0=\log\frac{1-p}{p},\qquad
+\ell_i^{\mathrm{ch}}=L_0(1-2y_i),
+\end{equation}
+with erasure override $\ell_i^{\mathrm{ch}}=0$.
+
+Implementation stabilizers:
+\begin{equation}
+\mathrm{damp}(m_{\mathrm{old}},m_{\mathrm{new}};\eta)=(1-\eta)m_{\mathrm{new}}+\eta m_{\mathrm{old}},
+\end{equation}
+\begin{equation}
+\mathrm{clip}(x;L_{\max})=\max(-L_{\max},\min(x,L_{\max})).
+\end{equation}
+
+Check-node update:
+\begin{equation}
+m_{c\to v}=2\,\mathrm{atanh}\!\left(\prod_{u\in\mathcal N(c)\setminus\{v\}}\tanh\frac{m_{u\to c}}{2}\right),
+\end{equation}
+with syndrome-sign handling:
+\begin{equation}
+m_{c\to v}\leftarrow(-1)^{s_c}m_{c\to v}.
+\end{equation}
+Min-sum approximation:
+\begin{equation}
+m_{c\to v}=\alpha
+\left(\prod_{u\in\mathcal N(c)\setminus\{v\}}\mathrm{sign}(m_{u\to c})\right)
+\min_{u\in\mathcal N(c)\setminus\{v\}}|m_{u\to c}|.
+\end{equation}
+Posterior LLR and decision:
+\begin{equation}
+\ell_v^{\mathrm{post}}=\ell_v^{\mathrm{ch}}+\sum_{c\in\mathcal N(v)}m_{c\to v},\qquad
+\hat e_v=\ind{\ell_v^{\mathrm{post}}<0}.
+\end{equation}
+
+\section{Monte Carlo Estimation and Uncertainty}
+\subsection{Logical error-rate estimator}
+At each sweep point:
+\begin{equation}
+\widehat{\mathrm{LER}}=\frac{k}{N}.
+\end{equation}
+This is the sample mean of Bernoulli outcomes $\mathcal L_t$.
+
+\subsection{Wilson 95\% interval}
+With $z=1.9599639845$ and $\hat p=k/N$:
+\begin{align}
+\mathrm{denom}&=1+\frac{z^2}{N},\\
+\mathrm{center}&=\frac{\hat p+z^2/(2N)}{\mathrm{denom}},\\
+\mathrm{spread}&=\frac{z}{\mathrm{denom}}
+\sqrt{\frac{\hat p(1-\hat p)+z^2/(4N)}{N}},
+\end{align}
+\begin{equation}
+\mathrm{CI}_{95\%}=
+\left[\max(0,\mathrm{center}-\mathrm{spread}),\min(1,\mathrm{center}+\mathrm{spread})\right].
+\end{equation}
+
+\paragraph{Why Wilson instead of normal approximation?}
+It behaves better for small $N$ or extreme proportions (near 0 or 1), which are common in high-distance, low-physical-noise regimes.
+
+\subsection{Diagnostics and adaptive stopping}
+For any trial statistic $x_t$:
+\begin{equation}
+\bar x=\frac{1}{N}\sum_{t=1}^N x_t,\qquad
+s^2=\frac{1}{N-1}\sum_{t=1}^N(x_t-\bar x)^2,\qquad
+\mathrm{SE}(\bar x)=\sqrt{\frac{s^2}{N}}.
+\end{equation}
+Adaptive stopping (if enabled) terminates when interval half-width $h$ satisfies
+\begin{equation}
+h\le\varepsilon_{\mathrm{abs}},
+\end{equation}
+or
+\begin{equation}
+\frac{h}{\max(\widehat{\mathrm{LER}},10^{-12})}\le\varepsilon_{\mathrm{rel}}.
+\end{equation}
+
+\section{Threshold Extraction: Crossings and Scaling}
+\subsection{Sweep definitions}
+Pauli mode:
+\begin{equation}
+p\in[p_{\min},p_{\max}],\qquad p\leftarrow p+\Delta p.
+\end{equation}
+Hybrid mode:
+\begin{equation}
+\sigma\in[\sigma_{\min},\sigma_{\max}],\qquad \sigma\leftarrow \sigma+\Delta \sigma.
+\end{equation}
+CSV convention: $\sigma=0$ for Pauli rows, $p=0$ for hybrid rows.
+
+\subsection{Crossing estimators}
+Hybrid nearest-grid difference:
+\begin{equation}
+\sigma_{\mathrm{cross}}\approx\arg\min_{\sigma_i}
+\left|
+\widehat{\mathrm{LER}}_{d_1}(\sigma_i)-\widehat{\mathrm{LER}}_{d_2}(\sigma_i)
+\right|.
+\end{equation}
+Pauli sign-change interpolation:
+\begin{equation}
+\Delta(p)=\widehat{\mathrm{LER}}_{d_1}(p)-\widehat{\mathrm{LER}}_{d_2}(p),
+\end{equation}
+\begin{equation}
+p^*=p_k+(p_{k+1}-p_k)\frac{\Delta(p_k)}{\Delta(p_k)-\Delta(p_{k+1})}.
+\end{equation}
+Bootstrap:
+\begin{equation}
+k'\sim\mathrm{Binomial}(N,\hat p),\qquad \hat p'=\frac{k'}{N}.
+\end{equation}
+
+\subsection{Finite-size scaling collapse}
+Using the scaling ansatz often used in threshold studies:
+\begin{equation}
+x=(p-p_c)d^{1/\nu}.
+\end{equation}
+LiDMaS+ bins points by $x$ and minimizes
+\begin{equation}
+\mathcal C(p_c,\nu)=\frac{\sum_b n_b\,\Var(y\mid b)}{\sum_b n_b},
+\end{equation}
+where $y$ is LER and bins with $n_b<2$ are excluded. Best fit:
+\begin{equation}
+(\hat p_c,\hat\nu)=\arg\min_{p_c,\nu}\mathcal C(p_c,\nu).
+\end{equation}
+
+\section{Deterministic Seeding and Reproducibility}
+Each trial seed is a deterministic 64-bit hash of:
+\begin{equation}
+(\text{base seed},d,\text{sweep key},\text{trial index},\text{thread id}).
+\end{equation}
+So fixed CLI inputs and thread settings produce reproducible runs, which is central for software-centered research reporting \cite{wayo2026lidmas}.
+
+\section{End-to-End Trial Map}
+Each trial executes:
+\begin{enumerate}[label=\arabic*.]
+  \item sample physical noise (Pauli or CV$\rightarrow$digitized),
+  \item compute syndrome $s$,
+  \item decode to correction $c$,
+  \item verify active-sector invariant $Hc=s\bmod 2$,
+  \item evaluate logical indicator $\mathcal L$.
+\end{enumerate}
+Point estimate:
+\begin{equation}
+\widehat{\mathrm{LER}}=\frac{1}{N}\sum_{t=1}^N \mathcal L_t.
+\end{equation}
+
+\section{Graduate-Level Teaching Flow (Recommended Lecture Plan)}
+\begin{enumerate}[label=\arabic*.]
+  \item \textbf{Physical context}: surface-code thresholding and why hybrid CV mappings are useful \cite{surfacecode1998,gkp2001,tzitrin2021static,sabo2024weightreduced}.
+  \item \textbf{Binary algebra}: derive syndrome equations from parity operators.
+  \item \textbf{Decoder objectives}: show MWPM and UF as inference surrogates with different complexity/optimality tradeoffs \cite{pymatching2021,unionfind2017}.
+  \item \textbf{Statistical layer}: derive LER estimator, Wilson intervals, and adaptive stopping.
+  \item \textbf{Threshold extraction}: crossings, bootstrap uncertainty, and finite-size scaling.
+\end{enumerate}
+
+The central message for students is that LiDMaS+ equations form one coherent chain:
+\begin{quote}
+model assumptions $\rightarrow$ decoder objective $\rightarrow$ logical event definition $\rightarrow$ Monte Carlo estimator $\rightarrow$ threshold inference.
+\end{quote}
+
+\bibliographystyle{unsrt}
+\bibliography{paper}
+
+\end{document}
