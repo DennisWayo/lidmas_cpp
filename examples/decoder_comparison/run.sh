@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 RESULT_DIR="${REPO_ROOT}/examples/results/decoder_comparison"
 BIN="${REPO_ROOT}/build/lidmas"
-MODEL_PATH="${SCRIPT_DIR}/dummy_model.json"
+MODEL_PATH="${LIDMAS_NEURAL_MODEL:-${SCRIPT_DIR}/trained_model.json}"
 
 TRIALS="${LIDMAS_TRIALS:-2000}"
 D_VALUE="${LIDMAS_D:-5}"
@@ -37,7 +37,8 @@ if [ ! -x "${BIN}" ]; then
   exit 1
 fi
 if [ ! -f "${MODEL_PATH}" ]; then
-  echo "Error: missing neural demo model at ${MODEL_PATH}" >&2
+  echo "Error: missing trained neural model at ${MODEL_PATH}" >&2
+  echo "Run: python3 ${SCRIPT_DIR}/train_neural_model.py" >&2
   exit 1
 fi
 
@@ -65,7 +66,7 @@ echo "[3/6] Running Union-Find..."
   --decoder=uf \
   --output="${RESULT_DIR}/results_uf.csv"
 
-echo "[4/6] Running Neural-MWPM (dummy model)..."
+echo "[4/6] Running Neural-MWPM (trained model)..."
 "${BIN}" \
   --surface_threshold \
   --mode=pauli \

@@ -5,7 +5,8 @@
 
 enum class QECNoiseModel {
     INDEPENDENT_XZ,
-    DEPOLARIZING
+    DEPOLARIZING,
+    HYBRID_GKP
 };
 
 struct QECSample {

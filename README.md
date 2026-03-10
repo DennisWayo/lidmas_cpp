@@ -8,9 +8,10 @@
 
 **Logical Injection & Decoding Modeling System**
 
-LiDMaS+ is a C++ research simulator software for quantum error-correction studies, focused on
-surface-code threshold experiments under both discrete Pauli noise and hybrid
-continuous-variable (CV)-discrete noise models.
+LiDMaS+ is a C++ research simulator for quantum error-correction studies, with
+surface-code threshold experiments under discrete Pauli noise and hybrid
+continuous-variable (CV)-discrete noise models as the primary workflow. It also
+includes CSS and LDPC engine paths for comparative studies.
 
 ## Statement of Need
 
@@ -28,6 +29,7 @@ comparative decoder studies.
 ## Core Capabilities
 
 - Surface-code simulation with configurable code distance and trial counts.
+- CSS and LDPC demo/threshold workflows via engine switching.
 - Decoder plugins: `mwpm`, `uf`, `neural_mwpm`.
 - Noise modes:
   - `pauli`: sweep logical error rate versus physical Pauli error rate `p`.
@@ -40,6 +42,7 @@ comparative decoder studies.
 - C++20 compiler
 - CMake >= 3.16
 - Optional: OpenMP for parallel threshold runs
+- Optional: CUDA toolkit (for GPU-accelerated Pauli surface_threshold sampling)
 - Optional (for plots): Python 3 with `matplotlib` and `pandas`
 
 ## Build
@@ -52,6 +55,27 @@ cmake --build build -j
 Primary executable:
 
 - `build/lidmas`
+
+### Optional CUDA build (Pauli surface_threshold sampling)
+
+```bash
+cmake -S . -B build -DLIDMAS_ENABLE_CUDA=ON
+cmake --build build -j
+```
+
+At runtime, enable with:
+
+```bash
+./build/lidmas --engine=surface --surface_threshold --mode=pauli --gpu ...
+```
+
+Quick benchmark:
+
+```bash
+./build/lidmas --gpu_bench
+./build/lidmas --gpu_bench_quick
+./build/lidmas --gpu_bench_full
+```
 
 ## Quick Start
 
@@ -67,10 +91,10 @@ Run deterministic smoke test:
 ./build/lidmas --smoke
 ```
 
-Run a Pauli threshold sweep:
+Run a Pauli threshold sweep (surface engine):
 
 ```bash
-./build/lidmas --surface_threshold \
+./build/lidmas --engine=surface --surface_threshold \
   --mode=pauli \
   --decoder=mwpm \
   --d=3,5,7 \
@@ -80,10 +104,10 @@ Run a Pauli threshold sweep:
   --out=surface_threshold.csv
 ```
 
-Run a hybrid CV sweep:
+Run a hybrid CV sweep (surface engine):
 
 ```bash
-./build/lidmas --surface_threshold \
+./build/lidmas --engine=surface --surface_threshold \
   --mode=hybrid \
   --decoder=mwpm \
   --d=3,5,7 \
@@ -93,9 +117,53 @@ Run a hybrid CV sweep:
   --out=surface_threshold.csv
 ```
 
+Run a native GKP sweep (surface engine):
+
+```bash
+./build/lidmas --engine=surface --surface_threshold \
+  --mode=gkp \
+  --decoder=mwpm \
+  --d=3,5,7 \
+  --sigma_start=0.05 --sigma_end=0.60 --sigma_step=0.05 \
+  --gkp_gate=0.0005 --gkp_meas=0.0005 --gkp_idle=0.0002 \
+  --gkp_loss=0.001 \
+  --trials=2000 \
+  --seed=1337 \
+  --out=gkp_surface_threshold.csv
+```
+
 Neural decoder note:
 
 - `--decoder=neural_mwpm` requires `--neural_model=<path>`.
+- A trained reference model is provided at `examples/decoder_comparison/trained_model.json`.
+- To retrain it, run `python3 examples/decoder_comparison/train_neural_model.py`.
+
+CSS engine demo / threshold (experimental):
+
+```bash
+./build/lidmas --engine=css \
+  --css_spec=examples/css_codes/steane/spec.yaml
+
+./build/lidmas --engine=css \
+  --css_repetition=7
+./build/lidmas --engine=css \
+  --css_shor
+
+./build/lidmas --engine=css --css_threshold --mode=pauli --trials=2000 \
+  --css_spec=examples/css_codes/steane/spec.yaml \
+  --out=css_threshold.csv
+```
+
+CSS matrix files are dense 0/1 text (space or comma separated). Logical files can include multiple rows.
+
+`--css_repetition=<n>` builds a bit-flip repetition code automatically (Hx empty, Hz chain).
+`--css_shor` builds the Shor [[9,1,3]] code automatically.
+
+LDPC engine (default):
+
+```bash
+./build/lidmas --engine=ldpc
+```
 
 ## Reproducible Examples
 
@@ -131,6 +199,11 @@ For quick validation in local or CI environments:
 ```bash
 ./build/lidmas --smoke
 ```
+
+## Hardware Integration
+
+See [docs/hardware-integration.md](/Users/denniswayo/lidmas_cpp/docs/hardware-integration.md) for the decoder IO schema,
+recommended data transport, and adapter API.
 
 ## Project Layout
 

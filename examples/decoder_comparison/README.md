@@ -4,12 +4,12 @@ This example benchmarks three surface-code decoders at fixed distance (`d=5`) ov
 
 - `mwpm`: minimum-weight perfect matching baseline (high-accuracy reference).
 - `uf`: Union-Find decoder (faster approximate decoder).
-- `neural_mwpm`: MWPM with learned edge weighting. This example uses a deterministic dummy model (`dummy_model.json`) for reproducibility.
+- `neural_mwpm`: MWPM with learned edge weighting using `trained_model.json`.
 
 ## Expected Behavior
 
 - `UF` is typically worse than `MWPM` at the same physical error rate.
-- `Neural MWPM` should be close to `MWPM` here because the dummy model is a simple linear demonstration model.
+- `Neural MWPM` uses a lightweight linear model trained from LiDMaS simulator feedback.
 
 ## Run
 
@@ -20,6 +20,24 @@ From this directory:
 ```
 
 The script builds the project, runs all three decoders, merges outputs, and generates figures.
+
+## Model Training
+
+To retrain/update the neural model:
+
+```bash
+python3 train_neural_model.py
+```
+
+This writes:
+
+- `examples/decoder_comparison/trained_model.json`
+
+You can also point `run.sh` to a custom model:
+
+```bash
+LIDMAS_NEURAL_MODEL=/path/to/model.json ./run.sh
+```
 
 ## Outputs
 

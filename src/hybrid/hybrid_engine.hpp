@@ -9,8 +9,10 @@
 #include "cv/gaussian_noise.hpp"
 #include "gkp/gkp_digitizer.hpp"
 #include "qec/LogicalOperators.h"
+#include "surface/ISurfaceDecoderPlugin.h"
 #include "surface/MWPMDecoder.h"
 #include "surface/SurfaceCode.h"
+#include "surface/SurfaceCorrection.h"
 #include "surface/SurfacePipeline.h"
 #include "surface/SurfaceSyndrome.h"
 
@@ -38,6 +40,10 @@ public:
           hz_rows(buildSparseRows(code.Hz())) {}
 
     void run_trial() {
+        run_trial(nullptr);
+    }
+
+    void run_trial(ISurfaceDecoderPlugin* plugin) {
         last_ = TrialResult{};
         const int n = code.n();
 
@@ -61,7 +67,12 @@ public:
         last_.syndrome_sz = syn.sz;
 
         try {
-            const std::vector<int> corr = decoder.decode(syn);
+            SurfaceCorrection corr;
+            if (plugin != nullptr) {
+                corr = plugin->decode(syn, code);
+            } else {
+                corr = bitmaskToCorrection(decoder.decode(syn));
+            }
             const std::vector<int> syn_after = syndromeFromCorrection(hz_rows, code.n(), corr);
 
             bool invariant_ok = (syn_after.size() == syn.sz.size());
@@ -74,11 +85,11 @@ public:
                 }
             }
 
-            for (int i = 0; i < static_cast<int>(corr.size()); ++i) {
-                if ((corr[i] & 1) == 0) continue;
-                last_.correction_flips.push_back(i);
+            last_.correction_flips = corr.qubit_flips;
+            last_.correction_weight = corr.weight;
+            if (last_.correction_weight == 0 && !last_.correction_flips.empty()) {
+                last_.correction_weight = static_cast<int>(last_.correction_flips.size());
             }
-            last_.correction_weight = static_cast<int>(last_.correction_flips.size());
 
             if (!invariant_ok) {
                 last_.decoder_failed = true;
@@ -130,10 +141,9 @@ private:
 
     static std::vector<int> syndromeFromCorrection(const SparseRows& rows,
                                                    int n_data,
-                                                   const std::vector<int>& corr) {
+                                                   const SurfaceCorrection& corr) {
         std::vector<unsigned char> mask(static_cast<size_t>(std::max(0, n_data)), 0);
-        for (int q = 0; q < static_cast<int>(corr.size()); ++q) {
-            if ((corr[q] & 1) == 0) continue;
+        for (int q : corr.qubit_flips) {
             if (q >= 0 && q < n_data) mask[static_cast<size_t>(q)] ^= 1u;
         }
 
@@ -144,6 +154,16 @@ private:
             syn[r] = parity & 1;
         }
         return syn;
+    }
+
+    static SurfaceCorrection bitmaskToCorrection(const std::vector<int>& bitmask) {
+        SurfaceCorrection corr;
+        corr.qubit_flips.reserve(bitmask.size());
+        for (int i = 0; i < static_cast<int>(bitmask.size()); ++i) {
+            if ((bitmask[i] & 1) != 0) corr.qubit_flips.push_back(i);
+        }
+        corr.weight = static_cast<int>(corr.qubit_flips.size());
+        return corr;
     }
 
     int d = 0;
