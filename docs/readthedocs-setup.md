@@ -30,3 +30,16 @@ Docs will be available at `http://127.0.0.1:8000`.
 - Any push that changes docs or config will trigger a new RTD build once the project is connected.
 - Keep command examples in docs aligned with `README.md` and `--help` output.
 
+## GitHub Pages (also supported)
+
+This repository also deploys docs with GitHub Pages via `.github/workflows/docs.yml`.
+
+In repository settings:
+
+1. Go to `Settings -> Pages`.
+2. Set `Source` to `GitHub Actions`.
+3. Push to `main` (or run the `docs` workflow manually).
+
+Published URL:
+
+- `https://denniswayo.github.io/lidmas_cpp/`
