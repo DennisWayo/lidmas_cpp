@@ -8,12 +8,8 @@ on:
 
 jobs:
   build-wheels:
-    name: Build wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+    name: Build wheels (ubuntu-latest)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -26,12 +22,11 @@ jobs:
         env:
           CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
           CIBW_SKIP: "*-musllinux_* pp* *-win32 *_i686"
-          CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_ENVIRONMENT: "CMAKE_BUILD_PARALLEL_LEVEL=2"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}
+          name: wheels-ubuntu-latest
           path: wheelhouse/*.whl
 
   build-sdist:
@@ -75,4 +70,3 @@ jobs:
 
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
-
