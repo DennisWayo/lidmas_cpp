@@ -224,6 +224,20 @@ If you use LiDMaS+ in academic work, cite the software release used for your
 experiments (tag + commit hash). If a JOSS/arXiv record is available for your
 release, cite that record directly.
 
+Paper reference (`paper_01`):
+
+```bibtex
+@misc{wayo2026decoder,
+  title={Decoder Performance in Hybrid CV-Discrete Surface-Code Threshold Estimation Using LiDMaS+},
+  author={Dennis Delali Kwesi Wayo and Chinonso Onah and Vladimir Milchakov and Leonardo Goliatt and Sven Groppe},
+  year={2026},
+  eprint={2603.06730},
+  archivePrefix={arXiv},
+  primaryClass={quant-ph},
+  url={https://arxiv.org/abs/2603.06730}
+}
+```
+
 Suggested software citation format:
 
 ```text
