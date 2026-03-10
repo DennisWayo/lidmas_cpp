@@ -4,6 +4,8 @@ project(lidmas_cpp)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(LIDMAS_ENABLE_CUDA "Enable CUDA backend for surface sampling" OFF)
+
 find_package(OpenMP)
 
 add_executable(lidmas
@@ -26,14 +28,22 @@ add_executable(lidmas
         include/core/DecoderRegistry.h
         include/core/RegisterDecoders.h
         include/core/RegisterPlugins.h
+        include/decoder_io/DecoderAdapter.h
+        include/decoder_io/DecoderTypes.h
+        include/decoder_io/SurfaceDecoderAdapter.h
+        include/decoder_io/SurfaceDecoderConfigIO.h
         include/decoders/IDecoder.h
         include/decoders/BPDecoderAdapter.h
+        src/decoder_io/SurfaceDecoderAdapter.cpp
+        src/decoder_io/SurfaceDecoderConfigIO.cpp
         src/utils/Channel.cpp
         src/utils/BSCChannel.cpp
         src/utils/SyndromeUtils.cpp
+        src/utils/MatrixIO.cpp
         include/utils/IChannel.h
         include/utils/BSCChannel.h
         include/utils/SyndromeUtils.h
+        include/utils/MatrixIO.h
         include/utils/SeedUtils.h
         include/sim/MonteCarlo.h
         src/sim/MonteCarlo.cpp
@@ -41,10 +51,14 @@ add_executable(lidmas
         src/sim/LDPCSimulation.cpp
         include/sim/CSSSimulation.h
         src/sim/CSSSimulation.cpp
+        include/sim/CSSThresholdRunner.h
+        src/sim/CSSThresholdRunner.cpp
         include/sim/SurfaceSimulation.h
         src/sim/SurfaceSimulation.cpp
         include/sim/SurfaceThresholdRunner.h
         src/sim/SurfaceThresholdRunner.cpp
+        include/sim/GpuBench.h
+        src/sim/GpuBench.cpp
         include/sim/SmokeTests.h
         src/sim/SmokeTests.cpp
         include/graph/TannerGraph.h
@@ -54,6 +68,10 @@ add_executable(lidmas
         include/decoders/BeliefPropagation.h
         src/codes/LDPCGenerator.cpp
         include/codes/LDPCGenerator.h
+        src/codes/RepetitionCode.cpp
+        include/codes/RepetitionCode.h
+        src/codes/ShorCode.cpp
+        include/codes/ShorCode.h
         include/qec/CSSDecoder.h
         include/qec/CSSCode.h
         include/qec/CSSSyndrome.h
@@ -78,6 +96,8 @@ add_executable(lidmas
         src/surface/SurfaceCode.cpp
         include/surface/SurfaceSyndrome.h
         src/surface/SurfaceSyndrome.cpp
+        include/surface/SurfaceDecoder.h
+        src/surface/SurfaceDecoder.cpp
         include/surface/SurfaceCorrection.h
         include/surface/SyndromeGraph.h
         src/surface/SyndromeGraph.cpp
@@ -101,6 +121,8 @@ add_executable(lidmas
         src/surface/UnionFindDecoder.cpp
         include/plugins/stub/StubSurfacePlugin.h
         src/plugins/stub/StubSurfacePlugin.cpp
+        include/plugins/bp/BPPlugin.h
+        src/plugins/bp/BPPlugin.cpp
         include/plugins/mwpm/MWPMPlugin.h
         src/plugins/mwpm/MWPMPlugin.cpp
         include/plugins/uf/UnionFindPlugin.h
@@ -140,6 +162,19 @@ if(OpenMP_CXX_FOUND)
     message(STATUS "OpenMP found via find_package")
     target_link_libraries(lidmas PRIVATE OpenMP::OpenMP_CXX)
     target_link_libraries(lidmas_surface PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
+if(LIDMAS_ENABLE_CUDA)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    find_package(CUDAToolkit REQUIRED)
+    message(STATUS "CUDA backend enabled")
+    target_sources(lidmas PRIVATE src/gpu/SurfaceGpuSampler.cu)
+    target_link_libraries(lidmas PRIVATE CUDA::cudart CUDA::curand)
+    target_compile_definitions(lidmas PRIVATE LIDMAS_CUDA_ENABLED)
+else()
+    target_sources(lidmas PRIVATE src/gpu/SurfaceGpuSampler_stub.cpp)
 endif()
 
 if(NOT OpenMP_CXX_FOUND AND APPLE)

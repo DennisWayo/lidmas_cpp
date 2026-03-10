@@ -7,6 +7,7 @@ class BinaryMatrix {
 
 private:
     std::vector<std::vector<int>> data;
+    int cols_ = 0;
 
 public:
     BinaryMatrix(int rows, int cols);

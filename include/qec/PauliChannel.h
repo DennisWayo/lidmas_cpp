@@ -16,4 +16,5 @@ class PauliChannel {
 public:
     static PauliSample sampleIndependentXZ(int n, double pX, double pZ, std::mt19937& rng);
     static PauliSample sampleDepolarizing(int n, double p, std::mt19937& rng);
+    static PauliSample sampleHybridGKP(int n, double sigma, std::mt19937& rng);
 };
