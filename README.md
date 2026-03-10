@@ -1,6 +1,11 @@
 <p align="center">
   <img src="https://img.shields.io/badge/C%2B%2B-20-black?logo=c%2B%2B&logoColor=white" />
   <img src="https://img.shields.io/badge/build-CMake-black?logo=cmake&logoColor=white" />
+  <a href="https://pypi.org/project/lidmas/"><img src="https://img.shields.io/pypi/v/lidmas?label=PyPI&logo=pypi" /></a>
+  <a href="https://github.com/DennisWayo/lidmas_cpp/actions/workflows/ci.yml"><img src="https://github.com/DennisWayo/lidmas_cpp/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://github.com/DennisWayo/lidmas_cpp/actions/workflows/docs.yml"><img src="https://github.com/DennisWayo/lidmas_cpp/actions/workflows/docs.yml/badge.svg" /></a>
+  <a href="https://denniswayo.github.io/lidmas_cpp/"><img src="https://img.shields.io/website?url=https%3A%2F%2Fdenniswayo.github.io%2Flidmas_cpp%2F&label=docs&logo=github" /></a>
+  <a href="https://github.com/DennisWayo/lidmas_cpp/releases"><img src="https://img.shields.io/github/v/release/DennisWayo/lidmas_cpp?label=release" /></a>
   <img src="https://img.shields.io/github/license/DennisWayo/lidmas_cpp?color=black" />
 </p>
 
