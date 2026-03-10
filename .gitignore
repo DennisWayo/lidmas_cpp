@@ -41,6 +41,7 @@ Temporary/
 *.csv
 *.txt
 !CMakeLists.txt
+!docs/requirements.txt
 *.log
 plot_threshold.py
 threshold_plot.png
