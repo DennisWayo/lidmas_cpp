@@ -67,3 +67,7 @@ examples/paper_runs/paper_*/results/
 
 # LaTeX artifacts and drafts
 *.tex
+
+# Local manuscript/support files kept out of VCS
+lidmas.bib
+live demo
