@@ -2,40 +2,42 @@
 
 This page summarizes the main `lidmas` command-line entry points.
 
+If you built from source only, replace `lidmas` with `./build/lidmas`.
+
 ## Main entry points
 
-- `./lidmas`
+- `lidmas`
   - Runs the classical LDPC BSC sweep (default mode).
-- `./lidmas --engine=surface`
+- `lidmas --engine=surface`
   - Selects surface-code engine routing.
-- `./lidmas --engine=css`
+- `lidmas --engine=css`
   - Selects CSS engine routing (requires `--css_spec` or `--css_hx/--css_hz/--css_lx/--css_lz`).
-- `./lidmas --engine=ldpc`
+- `lidmas --engine=ldpc`
   - Selects LDPC engine routing (same behavior as default).
-- `./lidmas --qec=css_demo`
+- `lidmas --qec=css_demo`
   - Runs CSS demo using BP decoder core (requires `--css_spec` or `--css_hx/--css_hz/--css_lx/--css_lz`).
-- `./lidmas --surface_demo=stub|mwpm|uf|neural_mwpm|bp` (use `--mode=gkp` for a sigma sweep)
+- `lidmas --surface_demo=stub|mwpm|uf|neural_mwpm|bp` (use `--mode=gkp` for a sigma sweep)
 - `--demo_sigma_start/--demo_sigma_end/--demo_sigma_step` (surface demo sigma sweep)
 - `--demo_sigma_values=0.10,0.15,0.20` (explicit surface demo sigma values)
 - `--demo_d=5` (surface demo distance)
 - `--demo_trials=500` (surface demo trials per point)
 - `--demo_seed=8400000` (surface demo seed base)
 - `--demo_distance_list=3,5,7` (surface demo distances list)
-- `--demo_seed_per_distance` (salt seed by distance)
+  - `--demo_seed_per_distance` (salt seed by distance)
 - `--demo_sigma_by_d=3:0.10,0.12;5:0.14,0.16` (per-distance sigma overrides)
 - `--demo_p_by_d=3:0.01,0.02;5:0.015` (per-distance p overrides)
   - Runs surface pipeline demo.
-- `./lidmas --surface_threshold ...`
+- `lidmas --surface_threshold ...`
   - Runs threshold sweeps over `pauli` or `hybrid` mode.
-- `./lidmas --css_threshold ...`
+- `lidmas --css_threshold ...`
   - Runs CSS threshold sweeps over `pauli` or `hybrid` mode.
-- `./lidmas --smoke`
+- `lidmas --smoke`
   - Runs lightweight surface smoke checks.
 
 ## Threshold command pattern
 
 ```bash
-./lidmas --engine=surface --surface_threshold \
+lidmas --engine=surface --surface_threshold \
   --decoder=<mwpm|uf|neural_mwpm|bp> \
   --d=3,5,7 \
   --mode=<pauli|hybrid|gkp> \
@@ -53,7 +55,7 @@ Mode-specific sweep parameters:
 ## CSS threshold command pattern
 
 ```bash
-./lidmas --engine=css --css_threshold \
+lidmas --engine=css --css_threshold \
   --decoder=<bp|bp_sum|bp_nms> \
   --css_spec=<path> \
   # or: --css_hx=<path> --css_hz=<path> --css_lx=<path> --css_lz=<path> \

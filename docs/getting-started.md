@@ -1,55 +1,63 @@
 # Getting Started
 
+## Installation paths
+
+### 1) PyPI install (recommended)
+
+```bash
+python -m pip install --upgrade lidmas
+lidmas --help
+```
+
+### 2) Source build
+
+```bash
+cmake -S . -B build
+cmake --build build -j
+./build/lidmas --help
+```
+
+If you built from source and did not install from PyPI, replace `lidmas` below with `./build/lidmas`.
+
 ## Requirements
 
 - C++20 compiler
 - CMake >= 3.16
 - Optional: OpenMP for parallel threshold runs
 - Optional: CUDA toolkit (for GPU-accelerated Pauli surface_threshold sampling)
-- Optional: Python 3 with `matplotlib` and `pandas` for plots
-
-## Build
-
-```bash
-cmake -S . -B build
-cmake --build build -j
-```
-
-Primary executable:
-
-- `build/lidmas`
+- Optional: Python 3 with `matplotlib` and `pandas` for plots (example plotting)
 
 ## First commands
 
 Show CLI help:
 
 ```bash
-./build/lidmas --help
+lidmas --help
 ```
 
 Engine switch examples:
 
 ```bash
-./build/lidmas --engine=surface
-./build/lidmas --engine=css \
+lidmas --engine=surface
+lidmas --engine=css \
   --css_spec=examples/css_codes/steane/spec.yaml
-./build/lidmas --engine=css \
+lidmas --engine=css \
   --css_repetition=7
-./build/lidmas --engine=css \
+lidmas --engine=css \
   --css_shor
-./build/lidmas --engine=ldpc
+lidmas --engine=ldpc
 ```
 
 Run deterministic smoke test:
 
 ```bash
-./build/lidmas --smoke
+lidmas --smoke
 ```
 
 ## Pauli threshold sweep
 
 ```bash
-./build/lidmas --engine=surface --surface_threshold \
+lidmas --engine=surface --surface_threshold \
   --mode=pauli \
   --decoder=mwpm \
   --d=3,5,7 \
@@ -62,7 +70,7 @@ Run deterministic smoke test:
 ## Hybrid CV sweep
 
 ```bash
-./build/lidmas --engine=surface --surface_threshold \
+lidmas --engine=surface --surface_threshold \
   --mode=hybrid \
   --decoder=mwpm \
   --d=3,5,7 \
@@ -75,7 +83,7 @@ Run deterministic smoke test:
 ## GKP sweep (native lattice)
 
 ```bash
-./build/lidmas --engine=surface --surface_threshold \
+lidmas --engine=surface --surface_threshold \
   --mode=gkp \
   --decoder=mwpm \
   --d=3,5,7 \
@@ -96,7 +104,7 @@ Neural decoder note:
 ## CSS threshold sweep (experimental)
 
 ```bash
-./build/lidmas --engine=css --css_threshold \
+lidmas --engine=css --css_threshold \
   --mode=pauli \
   --decoder=bp_sum \
   --css_spec=examples/css_codes/steane/spec.yaml \
