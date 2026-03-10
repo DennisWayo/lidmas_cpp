@@ -16,12 +16,38 @@ int dotMod2(const std::vector<int>& a,
 
 bool hasLogicalXFailure(const std::vector<int>& residualZ,
                         const LogicalPair& L) {
-    return dotMod2(residualZ, L.LX) == 1;
+    LogicalOperators ops;
+    ops.LX = {L.LX};
+    ops.LZ = {L.LZ};
+    return hasLogicalXFailure(residualZ, ops);
 }
 
 bool hasLogicalZFailure(const std::vector<int>& residualX,
                         const LogicalPair& L) {
-    return dotMod2(residualX, L.LZ) == 1;
+    LogicalOperators ops;
+    ops.LX = {L.LX};
+    ops.LZ = {L.LZ};
+    return hasLogicalZFailure(residualX, ops);
+}
+
+bool hasLogicalXFailure(const std::vector<int>& residualZ,
+                        const LogicalOperators& L) {
+    if (L.LX.empty()) return false;
+    const std::vector<int> flips = apply(L.LX, residualZ);
+    for (int v : flips) {
+        if ((v & 1) != 0) return true;
+    }
+    return false;
+}
+
+bool hasLogicalZFailure(const std::vector<int>& residualX,
+                        const LogicalOperators& L) {
+    if (L.LZ.empty()) return false;
+    const std::vector<int> flips = apply(L.LZ, residualX);
+    for (int v : flips) {
+        if ((v & 1) != 0) return true;
+    }
+    return false;
 }
 
 int dot_mod2(const std::vector<int>& a,

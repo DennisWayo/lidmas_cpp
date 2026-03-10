@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package lidmas.decoder.v1;
+
+enum SyndromeType {
+  SYNDROME_UNKNOWN = 0;
+  SYNDROME_X = 1;
+  SYNDROME_Z = 2;
+}
+
+message SyndromeEvent {
+  int32 index = 1;
+  uint64 time_ns = 2;
+  SyndromeType type = 3;
+}
+
+message SyndromeDense {
+  bytes bits = 1;   // packed bitset (LSB-first)
+  int32 n_bits = 2;
+  SyndromeType type = 3;
+}
+
+message NoiseParams {
+  double sigma = 1;
+  double gate_error_rate = 2;
+  double meas_error_rate = 3;
+  double idle_error_rate = 4;
+  repeated double loss_prob_by_qubit = 5;
+}
+
+message DecodeRequest {
+  string code_id = 1;
+  int32 round_index = 2;
+  int32 n_qubits = 3;
+
+  repeated SyndromeEvent events = 4;
+  repeated SyndromeDense dense = 5;
+
+  NoiseParams noise = 6;
+  map<string, string> metadata = 7;
+}
+
+message Correction {
+  repeated int32 qubit_flips = 1;
+  double confidence = 2;
+  string decoder_name = 3;
+  repeated int32 qubit_flips_x = 4;
+  repeated int32 qubit_flips_z = 5;
+}
+
+message DecodeResponse {
+  Correction correction = 1;
+  map<string, string> diagnostics = 2;
+}

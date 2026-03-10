@@ -1,8 +1,11 @@
-//
-// Created by Dennis Wayo on 15.02.2026.
-//
+#pragma once
 
-#ifndef LIDMAS_CPP_REPETITIONCODE_H
-#define LIDMAS_CPP_REPETITIONCODE_H
+#include "core/BinaryMatrix.h"
+#include "qec/LogicalOperators.h"
 
-#endif //LIDMAS_CPP_REPETITIONCODE_H
+class RepetitionCode {
+public:
+    static BinaryMatrix buildParityCheck(int n);
+    static LogicalOperators buildLogicals(int n);
+    static void buildCSS(int n, BinaryMatrix* hx, BinaryMatrix* hz, LogicalOperators* logicals);
+};

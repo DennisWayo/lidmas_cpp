@@ -39,7 +39,7 @@ public:
                         IQECChannel& channel);
 
     QECStats run(const RunConfig& cfg,
-                 const LogicalPair* logicals = nullptr) const;
+                 const LogicalOperators* logicals = nullptr) const;
 
 private:
     BinaryMatrix hx_;

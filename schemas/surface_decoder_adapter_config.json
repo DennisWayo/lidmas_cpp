@@ -1,0 +1,17 @@
+{
+  "distance": 5,
+  "decoder_name": "mwpm",
+  "weight_mode": "uniform",
+  "mwpm_graph": "full",
+  "uf_weighted": false,
+  "llr_p_data": -1.0,
+  "llr_p_meas": -1.0,
+  "llr_p_idle": -1.0,
+  "llr_clamp_min": 1e-12,
+  "llr_clamp_max": 0.999999999999,
+  "mwpm_weight_scale": 1000.0,
+  "neural_weights_path": "",
+  "neural_model_path": "",
+  "default_p": 0.01,
+  "seed": 12345
+}

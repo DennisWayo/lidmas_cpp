@@ -1,0 +1,27 @@
+{
+  "type": "linear",
+  "bias": 0.9364982943203386,
+  "weights": {
+    "manhattan": 0.09688862238085652,
+    "dx": -0.03774008738102768,
+    "dy": 0.010092217958822574,
+    "near_boundary": 0.310670255177008
+  },
+  "clamp": [
+    0.9918980031821528,
+    2.309709110614169
+  ],
+  "train_info": {
+    "method": "random_search_plus_local_refine",
+    "objective_name": "mean_ler_plus_penalty_times_mean_fail_rate",
+    "objective_value": 0.11893941666666667,
+    "mean_ler": 0.11893941666666667,
+    "mean_fail_rate": 0.0,
+    "mode": "hybrid",
+    "distance": 5,
+    "sigmas_csv": "0.3,0.35,0.4,0.45,0.5,0.55",
+    "trials_per_sigma": 220,
+    "seed": 1337,
+    "fail_penalty": 5.0
+  }
+}

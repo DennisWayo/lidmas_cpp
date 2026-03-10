@@ -3,8 +3,15 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "decoders/BeliefPropagation.h"
 
 class PluginRegistry;
+
+enum class SurfaceNoiseMode {
+    Pauli,
+    Hybrid,
+    GKP
+};
 
 struct SurfaceSweepConfig {
     int d = 3;
@@ -23,6 +30,15 @@ struct SurfaceSweepConfig {
     std::string mwpm_graph = "full";
     std::string neural_weights_path;
     std::string neural_model_path;
+    SurfaceNoiseMode mode = SurfaceNoiseMode::Pauli;
+    std::vector<double> sigma_values;
+    double gkp_gate_error = 0.0;
+    double gkp_meas_error = 0.0;
+    double gkp_idle_error = 0.0;
+    double gkp_loss_prob = 0.0;
+    std::vector<double> gkp_loss_map;
+    BeliefPropagation::Mode bp_mode = BeliefPropagation::Mode::SUM_PRODUCT;
+    double bp_alpha = 0.8;
 };
 
 using SurfaceStubSweepConfig = SurfaceSweepConfig;

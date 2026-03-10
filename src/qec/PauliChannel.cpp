@@ -1,5 +1,9 @@
 #include "qec/PauliChannel.h"
 #include <algorithm>
+#include <cmath>
+#include <random>
+
+#include "gkp/gkp_digitizer.hpp"
 
 PauliSample PauliChannel::sampleIndependentXZ(int n, double pX, double pZ, std::mt19937& rng) {
     const double px = std::clamp(pX, 0.0, 1.0);
@@ -58,6 +62,32 @@ PauliSample PauliChannel::sampleDepolarizing(int n, double p, std::mt19937& rng)
             out.eZ[i] = 1;
             out.paulis[i] = Pauli::Y;
         }
+    }
+
+    return out;
+}
+
+PauliSample PauliChannel::sampleHybridGKP(int n, double sigma, std::mt19937& rng) {
+    const double sigma_eff = std::max(0.0, std::abs(sigma));
+    std::normal_distribution<double> gauss(0.0, sigma_eff);
+    GKPDigitizer digitizer;
+
+    PauliSample out;
+    out.eX.assign(n, 0);
+    out.eZ.assign(n, 0);
+    out.paulis.assign(n, Pauli::I);
+
+    for (int i = 0; i < n; ++i) {
+        const double dq = gauss(rng);
+        const double dp = gauss(rng);
+        const PauliError e = digitizer.digitize(dq, dp);
+
+        out.eX[i] = e.x_flip ? 1 : 0;
+        out.eZ[i] = e.z_flip ? 1 : 0;
+        if (out.eX[i] && out.eZ[i]) out.paulis[i] = Pauli::Y;
+        else if (out.eX[i]) out.paulis[i] = Pauli::X;
+        else if (out.eZ[i]) out.paulis[i] = Pauli::Z;
+        else out.paulis[i] = Pauli::I;
     }
 
     return out;

@@ -21,6 +21,16 @@ std::vector<int> xorBinary(const std::vector<int>& a,
     return out;
 }
 
+double sigmaToEffectivePauliProb(double sigma) {
+    const double sigma_eff = std::max(0.0, sigma);
+    if (sigma_eff <= 0.0) return 0.0;
+    constexpr double kSqrtPi = 1.7724538509055160273;
+    constexpr double kSqrt2 = 1.4142135623730950488;
+    const double arg = kSqrtPi / (2.0 * kSqrt2 * sigma_eff);
+    const double p = 0.5 * std::erfc(arg);
+    return std::clamp(p, 0.0, 0.499999);
+}
+
 } // namespace
 
 QuantumCSSSimulator::QuantumCSSSimulator(const BinaryMatrix& Hx,
@@ -39,7 +49,7 @@ QuantumCSSSimulator::QuantumCSSSimulator(const BinaryMatrix& Hx,
 }
 
 QuantumCSSSimulator::QECStats QuantumCSSSimulator::run(const RunConfig& cfg,
-                                                       const LogicalPair* logicals) const {
+                                                       const LogicalOperators* logicals) const {
     const int n = hx_.cols();
     if (cfg.trials <= 0) {
         return {};
@@ -55,16 +65,22 @@ QuantumCSSSimulator::QECStats QuantumCSSSimulator::run(const RunConfig& cfg,
     long long max_hit_x = 0;
     long long max_hit_z = 0;
 
-    const double pX_eff = (cfg.noise_model == QECNoiseModel::DEPOLARIZING)
-        ? std::clamp((2.0 / 3.0) * cfg.p, 0.0, 0.499999)
-        : std::clamp(cfg.pX, 0.0, 0.499999);
-    const double pZ_eff = (cfg.noise_model == QECNoiseModel::DEPOLARIZING)
-        ? std::clamp((2.0 / 3.0) * cfg.p, 0.0, 0.499999)
-        : std::clamp(cfg.pZ, 0.0, 0.499999);
+    const bool depolarizing_mode = (cfg.noise_model == QECNoiseModel::DEPOLARIZING);
+    const bool hybrid_mode = (cfg.noise_model == QECNoiseModel::HYBRID_GKP);
+    const double hybrid_p_eff = hybrid_mode ? sigmaToEffectivePauliProb(cfg.p) : 0.0;
 
-    const int p_key = (cfg.noise_model == QECNoiseModel::DEPOLARIZING)
+    const double pX_eff = depolarizing_mode
+        ? std::clamp((2.0 / 3.0) * cfg.p, 0.0, 0.499999)
+        : (hybrid_mode ? hybrid_p_eff : std::clamp(cfg.pX, 0.0, 0.499999));
+    const double pZ_eff = depolarizing_mode
+        ? std::clamp((2.0 / 3.0) * cfg.p, 0.0, 0.499999)
+        : (hybrid_mode ? hybrid_p_eff : std::clamp(cfg.pZ, 0.0, 0.499999));
+
+    const int p_key = depolarizing_mode
         ? qec_p_key_depolarizing(cfg.p)
-        : qec_p_key_independent(cfg.pX, cfg.pZ);
+        : (hybrid_mode
+               ? qec_p_key_depolarizing(cfg.p)
+               : qec_p_key_independent(cfg.pX, cfg.pZ));
 
     auto dec_x = x_decoder_factory_();
     auto dec_z = z_decoder_factory_();
@@ -109,7 +125,7 @@ QuantumCSSSimulator::QECStats QuantumCSSSimulator::run(const RunConfig& cfg,
 
         bool x_fail = false;
         bool z_fail = false;
-        if (logicals != nullptr) {
+        if (logicals != nullptr && !logicals->empty()) {
             x_fail = hasLogicalXFailure(rZ, *logicals);
             z_fail = hasLogicalZFailure(rX, *logicals);
         }
