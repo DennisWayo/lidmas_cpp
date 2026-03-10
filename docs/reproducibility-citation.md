@@ -12,8 +12,10 @@ LiDMaS+ is designed for deterministic reruns:
 For quick CI/local validation:
 
 ```bash
-./build/lidmas --smoke
+lidmas --smoke
 ```
+
+If installed from source only, use `./build/lidmas --smoke`.
 
 ## Validation checklist
 
@@ -27,6 +29,16 @@ For quick CI/local validation:
 
 If you use LiDMaS+ in academic work, cite the software release used for experiments (tag + commit hash). If a JOSS/arXiv record exists for your version, cite that record directly.
 
+## PyPI package
+
+- Package name: `lidmas`
+- Install: `python -m pip install --upgrade lidmas`
+- Check installed version:
+
+```bash
+python -c "import importlib.metadata as m; print(m.version('lidmas'))"
+```
+
 Suggested software citation:
 
 ```text
@@ -37,4 +49,3 @@ https://github.com/DennisWayo/lidmas_cpp
 ## License
 
 LiDMaS+ is released under the MIT License. See `LICENSE`.
-
