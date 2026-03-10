@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "lidmas"
-version = "1.1.3"
+version = "1.1.4"
 description = "LiDMaS+ (Logical Injection & Decoding Modeling System) quantum error-correction simulator"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -32,3 +32,4 @@ lidmas = "lidmas.__main__:main"
 cmake.version = ">=3.16"
 cmake.build-type = "Release"
 wheel.packages = ["python/lidmas"]
+sdist.include = ["python/lidmas/__init__.py", "python/lidmas/__main__.py"]
