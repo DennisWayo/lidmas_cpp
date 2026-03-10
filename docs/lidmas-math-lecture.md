@@ -106,8 +106,7 @@ Digitization:
 $$
 n_q=\mathrm{round}(\Delta q/\lambda), \qquad
 n_p=\mathrm{round}(\Delta p/\lambda),
-$$
-$$
+\\
 x_{\mathrm{flip}}=|n_q|\bmod 2, \qquad
 z_{\mathrm{flip}}=|n_p|\bmod 2.
 $$
@@ -170,8 +169,7 @@ Scale model:
 
 $$
 s(\phi)=\mathrm{clip}(\beta_0+\beta_1 m+\beta_2|\Delta x|+\beta_3|\Delta y|+\beta_4 b,\ s_{\min},s_{\max}),
-$$
-$$
+\\
 \hat W = W\,s(\phi).
 $$
 
@@ -219,8 +217,7 @@ $$
 
 $$
 \Delta(p)=\widehat{\mathrm{LER}}_{d_1}(p)-\widehat{\mathrm{LER}}_{d_2}(p),
-$$
-$$
+\\
 p^*=p_k+(p_{k+1}-p_k)\frac{\Delta(p_k)}{\Delta(p_k)-\Delta(p_{k+1})}.
 $$
 
@@ -235,9 +232,7 @@ with LiDMaS+ bin-variance objective:
 $$
 \mathcal{C}(p_c,\nu)=
 \frac{\sum_b n_b\,\mathrm{Var}(y\mid b)}{\sum_b n_b},
-$$
-and best fit
-$$
+\\
 (\hat p_c,\hat\nu)=\arg\min_{p_c,\nu}\mathcal{C}(p_c,\nu).
 $$
 
