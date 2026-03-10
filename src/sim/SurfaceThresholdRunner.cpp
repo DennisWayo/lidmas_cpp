@@ -1047,6 +1047,24 @@ void wilson95(long long fail_count,
     halfwidth = spread;
 }
 
+PointAccum runBatchTrialsCpu(const SurfaceCode& code,
+                             const SparseRows& hx_rows,
+                             const SparseRows& hz_rows,
+                             SurfacePipeline& pipeline,
+                             const PluginRegistry& reg,
+                             const std::string& decoder_name,
+                             const DecoderConfig& dec_cfg,
+                             NoiseMode mode,
+                             const GKPNoiseConfig& gkp_cfg,
+                             double cv_sigma,
+                             double p,
+                             uint64_t seed_base,
+                             int d,
+                             int p_key,
+                             long long start_trial,
+                             int batch_trials,
+                             std::atomic<bool>& first_failure_dumped);
+
 bool runBatchTrialsGpu(const SurfaceCode& code,
                        const SparseRows& hz_rows,
                        const PluginRegistry& reg,
