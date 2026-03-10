@@ -165,6 +165,14 @@ install(TARGETS lidmas
         RUNTIME DESTINATION lidmas/_bin
 )
 
+# Install Python launcher package files into the wheel so the console entry
+# point `lidmas` can import `lidmas.__main__`.
+install(FILES
+        python/lidmas/__init__.py
+        python/lidmas/__main__.py
+        DESTINATION lidmas
+)
+
 if(OpenMP_CXX_FOUND)
     message(STATUS "OpenMP found via find_package")
     target_link_libraries(lidmas PRIVATE OpenMP::OpenMP_CXX)
