@@ -18,6 +18,9 @@ rules.ninja
 
 # Binaries
 lidmas
+!python/lidmas/
+!python/lidmas/__init__.py
+!python/lidmas/__main__.py
 *.exe
 *.out
 *.a
