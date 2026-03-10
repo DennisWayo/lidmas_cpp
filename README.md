@@ -16,7 +16,7 @@ includes CSS and LDPC engine paths for comparative studies.
 Install from PyPI:
 
 ```bash
-pip install lidmas
+python -m pip install --upgrade lidmas
 ```
 
 Then run:
@@ -24,6 +24,11 @@ Then run:
 ```bash
 lidmas --help
 ```
+
+Documentation:
+
+- [GitHub Pages Documentation](https://denniswayo.github.io/lidmas_cpp/)
+- Read the Docs mirror is currently unavailable.
 
 ## Statement of Need
 
@@ -33,7 +38,7 @@ and inspectable simulation pipelines. LiDMaS+ provides:
 - deterministic Monte Carlo runs with explicit seed control,
 - multiple decoders under a common interface,
 - confidence-interval-aware threshold outputs,
-- publication-ready CSV and figure workflows in `examples/`.
+- numerous reproducible workflows and scripts across `examples/`.
 
 This makes it suitable for method development, reproducibility appendices, and
 comparative decoder studies.
@@ -221,7 +226,7 @@ For quick validation in local or CI environments:
 
 ## Hardware Integration
 
-See [docs/hardware-integration.md](/Users/denniswayo/lidmas_cpp/docs/hardware-integration.md) for the decoder IO schema,
+See [hardware-integration](https://denniswayo.github.io/lidmas_cpp/hardware-integration/) for the decoder IO schema,
 recommended data transport, and adapter API.
 
 ## Project Layout
@@ -240,10 +245,11 @@ GitHub Releases.
 ## Citation
 
 If you use LiDMaS+ in academic work, cite the software release used for your
-experiments (tag + commit hash). If a JOSS/arXiv record is available for your
-release, cite that record directly.
+experiments (tag + commit hash). 
 
 Paper reference (`paper_01`):
+
+![paper_01 graphic](docs/images/paper_01_graphic.png)
 
 ```bibtex
 @misc{wayo2026decoder,
@@ -255,13 +261,6 @@ Paper reference (`paper_01`):
   primaryClass={quant-ph},
   url={https://arxiv.org/abs/2603.06730}
 }
-```
-
-Suggested software citation format:
-
-```text
-Wayo, D. (Year). LiDMaS+ (Version X.Y.Z) [Computer software].
-https://github.com/DennisWayo/lidmas_cpp
 ```
 
 ## License
