@@ -1,6 +1,7 @@
 #include "core/RegisterPlugins.h"
 
 #include "core/PluginRegistry.h"
+#include "plugins/bp/BPPlugin.h"
 #include "plugins/neural/NeuralMWPMPlugin.h"
 #include "plugins/mwpm/MWPMPlugin.h"
 #include "plugins/stub/StubSurfacePlugin.h"
@@ -9,6 +10,9 @@
 void RegisterAllPlugins(PluginRegistry& reg) {
     reg.registerPlugin("stub", []() -> std::unique_ptr<IDecoderPlugin> {
         return std::make_unique<StubSurfacePlugin>();
+    });
+    reg.registerPlugin("bp", []() -> std::unique_ptr<IDecoderPlugin> {
+        return std::make_unique<BPPlugin>();
     });
     reg.registerPlugin("mwpm", []() -> std::unique_ptr<IDecoderPlugin> {
         return std::make_unique<MWPMPlugin>();

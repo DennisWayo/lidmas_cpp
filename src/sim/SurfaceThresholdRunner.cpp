@@ -26,6 +26,9 @@
 #include "core/DecoderConfig.h"
 #include "core/PluginRegistry.h"
 #include "core/RegisterPlugins.h"
+#include "cv/gaussian_noise.hpp"
+#include "gkp/gkp_digitizer.hpp"
+#include "gpu/SurfaceGpuSampler.h"
 #include "hybrid/hybrid_engine.hpp"
 #include "qec/LogicalOperators.h"
 #include "surface/ISurfaceDecoderPlugin.h"
@@ -106,6 +109,7 @@ std::string normalizeDecoderName(const std::string& name) {
     if (name == "mwpm") return "mwpm";
     if (name == "uf") return "uf";
     if (name == "neural_mwpm") return "neural_mwpm";
+    if (name == "bp") return "bp";
     return "mwpm";
 }
 
@@ -116,7 +120,12 @@ bool fileExists(const std::string& path) {
 }
 
 const char* noiseModeName(NoiseMode mode) {
-    return (mode == NoiseMode::Hybrid) ? "hybrid" : "pauli";
+    switch (mode) {
+        case NoiseMode::Hybrid: return "hybrid";
+        case NoiseMode::GKP: return "gkp";
+        case NoiseMode::Pauli:
+        default: return "pauli";
+    }
 }
 
 std::vector<double> makeSweepGrid(double start, double end, double step) {
@@ -182,19 +191,21 @@ std::vector<std::pair<std::pair<int, int>, double>> estimateSigmaCrossings(
     return out;
 }
 
-bool writeHybridPlotScript(const std::string& csv_path,
-                           const std::string& script_path) {
+bool writeSigmaPlotScript(const std::string& csv_path,
+                          const std::string& script_path,
+                          const std::string& mode_filter,
+                          const std::string& title) {
     std::ostringstream py;
     py << "import pandas as pd\n";
     py << "import matplotlib.pyplot as plt\n\n";
     py << "df = pd.read_csv(\"" << csv_path << "\")\n";
-    py << "df = df[df[\"mode\"] == \"hybrid\"]\n\n";
+    py << "df = df[df[\"mode\"] == \"" << mode_filter << "\"]\n\n";
     py << "for d in sorted(df[\"distance\"].unique()):\n";
     py << "    sub = df[df[\"distance\"] == d]\n";
     py << "    plt.plot(sub[\"sigma\"], sub[\"ler\"], marker='o', label=f\"d={d}\")\n\n";
     py << "plt.xlabel(\"Sigma (CV noise)\")\n";
     py << "plt.ylabel(\"Logical Error Rate\")\n";
-    py << "plt.title(\"Hybrid CV-Discrete Threshold Curve\")\n";
+    py << "plt.title(\"" << title << "\")\n";
     py << "plt.legend()\n";
     py << "plt.grid(True)\n";
     py << "plt.savefig(\"threshold_plot.png\", dpi=300)\n";
@@ -417,6 +428,14 @@ struct SingleTrialResult {
     std::string failure_dump;
 };
 
+struct GKPNoiseConfig {
+    double gate_error = 0.0;
+    double meas_error = 0.0;
+    double idle_error = 0.0;
+    double loss_prob = 0.0;
+    std::vector<double> loss_map;
+};
+
 using SparseRows = std::vector<std::vector<int>>;
 
 SparseRows buildSparseRows(const BinaryMatrix& H) {
@@ -433,6 +452,13 @@ SparseRows buildSparseRows(const BinaryMatrix& H) {
 
 struct SzTrialSample {
     std::vector<int> ex;
+    std::vector<int> sz;
+};
+
+struct GkpTrialSample {
+    std::vector<int> ex;
+    std::vector<int> ez;
+    std::vector<int> sx;
     std::vector<int> sz;
 };
 
@@ -462,6 +488,78 @@ SzTrialSample sampleSzOnly(const SurfaceCode& code,
         for (int c : row) parity ^= (out.ex[c] & 1);
         out.sz[r] = parity;
     }
+    return out;
+}
+
+GkpTrialSample sampleGkp(const SurfaceCode& code,
+                         const SparseRows& hx_rows,
+                         const SparseRows& hz_rows,
+                         double sigma,
+                         const GKPNoiseConfig& noise_cfg,
+                         uint64_t seed) {
+    GkpTrialSample out;
+    const int n = code.n();
+    out.ex.assign(n, 0);
+    out.ez.assign(n, 0);
+
+    std::mt19937_64 rng(seed);
+    const double sigma_eff = std::max(0.0, sigma);
+    std::normal_distribution<double> gauss(0.0, sigma_eff);
+    std::bernoulli_distribution gate_flip(std::clamp(noise_cfg.gate_error, 0.0, 1.0));
+    std::bernoulli_distribution idle_flip(std::clamp(noise_cfg.idle_error, 0.0, 1.0));
+
+    GKPDigitizer digitizer;
+    std::bernoulli_distribution random_bit(0.5);
+
+    for (int q = 0; q < n; ++q) {
+        const double dq = gauss(rng);
+        const double dp = gauss(rng);
+        const PauliError e = digitizer.digitize(dq, dp);
+        int ex = e.x_flip ? 1 : 0;
+        int ez = e.z_flip ? 1 : 0;
+
+        if (gate_flip(rng)) ex ^= 1;
+        if (gate_flip(rng)) ez ^= 1;
+        if (idle_flip(rng)) ex ^= 1;
+        if (idle_flip(rng)) ez ^= 1;
+
+        double loss_p = noise_cfg.loss_prob;
+        if (!noise_cfg.loss_map.empty()) {
+            loss_p = noise_cfg.loss_map[static_cast<size_t>(q)];
+        }
+        if (loss_p > 0.0) {
+            std::bernoulli_distribution loss_flip(std::clamp(loss_p, 0.0, 1.0));
+            if (loss_flip(rng)) {
+                ex = random_bit(rng) ? 1 : 0;
+                ez = random_bit(rng) ? 1 : 0;
+            }
+        }
+
+        out.ex[q] = ex;
+        out.ez[q] = ez;
+    }
+
+    out.sx.assign(hx_rows.size(), 0);
+    for (size_t r = 0; r < hx_rows.size(); ++r) {
+        int parity = 0;
+        for (int c : hx_rows[r]) parity ^= (out.ez[c] & 1);
+        out.sx[r] = parity & 1;
+    }
+
+    out.sz.assign(hz_rows.size(), 0);
+    for (size_t r = 0; r < hz_rows.size(); ++r) {
+        int parity = 0;
+        for (int c : hz_rows[r]) parity ^= (out.ex[c] & 1);
+        out.sz[r] = parity & 1;
+    }
+
+    const double meas_p = std::clamp(noise_cfg.meas_error, 0.0, 1.0);
+    if (meas_p > 0.0) {
+        std::bernoulli_distribution meas_flip(meas_p);
+        for (int& v : out.sx) v ^= meas_flip(rng) ? 1 : 0;
+        for (int& v : out.sz) v ^= meas_flip(rng) ? 1 : 0;
+    }
+
     return out;
 }
 
@@ -711,7 +809,135 @@ SingleTrialResult run_single_trial_discrete(const SurfaceCode& code,
     return out;
 }
 
-SingleTrialResult run_single_trial_hybrid(const std::string& decoder_name,
+SingleTrialResult run_single_trial_gkp(const SurfaceCode& code,
+                                       const SparseRows& hx_rows,
+                                       const SparseRows& hz_rows,
+                                       ISurfaceDecoderPlugin& plugin,
+                                       const std::string& decoder_name,
+                                       double sigma,
+                                       const GKPNoiseConfig& noise_cfg,
+                                       uint64_t seed_base,
+                                       int d,
+                                       int p_key,
+                                       long long trial_index,
+                                       int thread_id) {
+    const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, trial_index, thread_id);
+    const GkpTrialSample sample = sampleGkp(code, hx_rows, hz_rows, sigma, noise_cfg, seed);
+
+    SingleTrialResult out;
+    for (int v : sample.sx) out.defect_count += (v & 1);
+    for (int v : sample.sz) out.defect_count += (v & 1);
+
+    try {
+        SurfaceSyndrome syn_x;
+        syn_x.sz = sample.sz;
+        const SurfaceCorrection corr_x = plugin.decode(syn_x, code);
+
+        SurfaceSyndrome syn_z;
+        syn_z.sx = sample.sx;
+        const SurfaceCorrection corr_z = plugin.decode(syn_z, code);
+
+        const std::vector<int> syn_after_x = syndromeFromCorrection(hz_rows, code.n(), corr_x);
+        const std::vector<int> syn_after_z = syndromeFromCorrection(hx_rows, code.n(), corr_z);
+
+        bool invariant_ok_x = (syn_after_x.size() == sample.sz.size());
+        if (invariant_ok_x) {
+            for (size_t i = 0; i < syn_after_x.size(); ++i) {
+                if ((syn_after_x[i] & 1) != (sample.sz[i] & 1)) {
+                    invariant_ok_x = false;
+                    break;
+                }
+            }
+        }
+
+        bool invariant_ok_z = (syn_after_z.size() == sample.sx.size());
+        if (invariant_ok_z) {
+            for (size_t i = 0; i < syn_after_z.size(); ++i) {
+                if ((syn_after_z[i] & 1) != (sample.sx[i] & 1)) {
+                    invariant_ok_z = false;
+                    break;
+                }
+            }
+        }
+
+        int weight_x = corr_x.weight;
+        if (weight_x == 0 && !corr_x.qubit_flips.empty()) {
+            weight_x = SurfacePipeline::correctionWeight(corr_x, code.n());
+        }
+        int weight_z = corr_z.weight;
+        if (weight_z == 0 && !corr_z.qubit_flips.empty()) {
+            weight_z = SurfacePipeline::correctionWeight(corr_z, code.n());
+        }
+        out.correction_weight = weight_x + weight_z;
+
+        if (!invariant_ok_x || !invariant_ok_z) {
+            out.decoder_failed = true;
+            out.logical_failure = true;
+            const std::string err = (!invariant_ok_x ? "gkp invariant mismatch: Hz*Xcorr != sz"
+                                                     : "gkp invariant mismatch: Hx*Zcorr != sx");
+            out.failure_dump = buildFailureDump(
+                decoder_name,
+                d,
+                sigma,
+                trial_index,
+                seed,
+                sample.sx,
+                sample.sz,
+                (!invariant_ok_x ? &corr_x : &corr_z),
+                (!invariant_ok_x ? &syn_after_x : &syn_after_z),
+                err);
+            return out;
+        }
+
+        std::vector<int> residual_ex = sample.ex;
+        std::vector<int> residual_ez = sample.ez;
+        for (int q : corr_x.qubit_flips) {
+            if (q >= 0 && q < code.n()) residual_ex[q] ^= 1;
+        }
+        for (int q : corr_z.qubit_flips) {
+            if (q >= 0 && q < code.n()) residual_ez[q] ^= 1;
+        }
+
+        out.logical_failure =
+            (dot_mod2(residual_ex, code.logicalXSupport()) != 0) ||
+            (dot_mod2(residual_ez, code.logicalZSupport()) != 0);
+    } catch (const std::exception& ex) {
+        out.decoder_failed = true;
+        out.logical_failure = true;
+        out.correction_weight = 0;
+        out.failure_dump = buildFailureDump(
+            decoder_name,
+            d,
+            sigma,
+            trial_index,
+            seed,
+            sample.sx,
+            sample.sz,
+            nullptr,
+            nullptr,
+            ex.what());
+    } catch (...) {
+        out.decoder_failed = true;
+        out.logical_failure = true;
+        out.correction_weight = 0;
+        out.failure_dump = buildFailureDump(
+            decoder_name,
+            d,
+            sigma,
+            trial_index,
+            seed,
+            sample.sx,
+            sample.sz,
+            nullptr,
+            nullptr,
+            "unknown exception");
+    }
+
+    return out;
+}
+
+SingleTrialResult run_single_trial_hybrid(ISurfaceDecoderPlugin* plugin,
+                                          const std::string& decoder_name,
                                           double p,
                                           uint64_t seed_base,
                                           int d,
@@ -723,7 +949,11 @@ SingleTrialResult run_single_trial_hybrid(const std::string& decoder_name,
     SingleTrialResult out;
     try {
         HybridEngine engine(d, sigma, seed);
-        engine.run_trial();
+        if (plugin != nullptr) {
+            engine.run_trial(plugin);
+        } else {
+            engine.run_trial();
+        }
         const auto& r = engine.last_result();
         out.logical_failure = r.logical_failure;
         out.decoder_failed = r.decoder_failed;
@@ -817,22 +1047,43 @@ void wilson95(long long fail_count,
     halfwidth = spread;
 }
 
-PointAccum runBatchTrials(const SurfaceCode& code,
-                          const SparseRows& hz_rows,
-                          SurfacePipeline& pipeline,
-                          const PluginRegistry& reg,
-                          const std::string& decoder_name,
-                          const DecoderConfig& dec_cfg,
-                          bool hybrid_mode,
-                          double cv_sigma,
-                          double p,
-                          uint64_t seed_base,
-                          int d,
-                          int p_key,
-                          long long start_trial,
-                          int batch_trials,
-                          std::atomic<bool>& first_failure_dumped) {
-    PointAccum acc;
+bool runBatchTrialsGpu(const SurfaceCode& code,
+                       const SparseRows& hz_rows,
+                       const PluginRegistry& reg,
+                       const std::string& decoder_name,
+                       const DecoderConfig& dec_cfg,
+                       double p,
+                       uint64_t seed_base,
+                       int d,
+                       int p_key,
+                       long long start_trial,
+                       int batch_trials,
+                       gpu::SurfaceGpuSampler& gpu_sampler,
+                       std::atomic<bool>& first_failure_dumped,
+                       PointAccum* out,
+                       std::string* error) {
+    if (out == nullptr) {
+        if (error) *error = "null output accumulator";
+        return false;
+    }
+    *out = PointAccum{};
+    if (batch_trials <= 0) return true;
+
+    std::vector<unsigned char> ex_batch;
+    std::vector<unsigned char> sz_batch;
+    if (!gpu_sampler.sample_pauli_batch(p, seed_base, d, p_key, start_trial, batch_trials,
+                                        ex_batch, sz_batch, error)) {
+        return false;
+    }
+
+    const int n = code.n();
+    const int m = static_cast<int>(hz_rows.size());
+    if (static_cast<long long>(ex_batch.size()) < static_cast<long long>(batch_trials) * n ||
+        static_cast<long long>(sz_batch.size()) < static_cast<long long>(batch_trials) * m) {
+        if (error) *error = "GPU batch buffers are smaller than expected";
+        return false;
+    }
+
     long long logical_failures = 0;
     long long decoder_failures = 0;
     long long total_trials = 0;
@@ -855,20 +1106,433 @@ PointAccum runBatchTrials(const SurfaceCode& code,
         std::unique_ptr<IDecoderPlugin> plugin_base;
         ISurfaceDecoderPlugin* surf_plugin = nullptr;
         std::string plugin_init_error;
-        if (!hybrid_mode) {
+        try {
+            plugin_base = reg.create(decoder_name);
+            surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
+            if (surf_plugin == nullptr) {
+                plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
+            } else {
+                surf_plugin->configure(dec_cfg);
+            }
+        } catch (const std::exception& ex) {
+            plugin_init_error = ex.what();
+        } catch (...) {
+            plugin_init_error = "unknown exception creating/configuring decoder plugin";
+        }
+
+        std::vector<int> sz_vec(static_cast<size_t>(m), 0);
+
+#pragma omp for schedule(static)
+        for (int i = 0; i < batch_trials; ++i) {
+            const long long t = start_trial + i;
+            const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, t, 0);
+            const unsigned char* ex_ptr = ex_batch.data() + static_cast<size_t>(i) * static_cast<size_t>(n);
+            const unsigned char* sz_ptr = sz_batch.data() + static_cast<size_t>(i) * static_cast<size_t>(m);
+
+            SingleTrialResult r;
+            int defect_count = 0;
+            for (int row = 0; row < m; ++row) {
+                const int bit = static_cast<int>(sz_ptr[row] & 1u);
+                sz_vec[static_cast<size_t>(row)] = bit;
+                defect_count += bit;
+            }
+            r.defect_count = defect_count;
+
+            if (surf_plugin == nullptr) {
+                r.decoder_failed = true;
+                r.logical_failure = true;
+                r.correction_weight = 0;
+                r.failure_dump = buildFailureDump(
+                    decoder_name,
+                    d,
+                    p,
+                    t,
+                    seed,
+                    {},
+                    sz_vec,
+                    nullptr,
+                    nullptr,
+                    plugin_init_error.empty() ? "decoder plugin unavailable" : plugin_init_error);
+            } else {
+                try {
+                    SurfaceSyndrome decode_syn;
+                    decode_syn.sz = sz_vec;
+                    const SurfaceCorrection corr = surf_plugin->decode(decode_syn, code);
+
+                    const std::vector<int> syn_after = syndromeFromCorrection(hz_rows, code.n(), corr);
+                    bool invariant_ok = (syn_after.size() == sz_vec.size());
+                    if (invariant_ok) {
+                        for (size_t k = 0; k < syn_after.size(); ++k) {
+                            if ((syn_after[k] & 1) != (sz_vec[k] & 1)) {
+                                invariant_ok = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    int weight = corr.weight;
+                    if (weight == 0 && !corr.qubit_flips.empty()) {
+                        weight = SurfacePipeline::correctionWeight(corr, code.n());
+                    }
+                    r.correction_weight = weight;
+
+                    if (!invariant_ok) {
+                        r.decoder_failed = true;
+                        r.logical_failure = true;
+                        r.failure_dump = buildFailureDump(
+                            decoder_name,
+                            d,
+                            p,
+                            t,
+                            seed,
+                            {},
+                            sz_vec,
+                            &corr,
+                            &syn_after,
+                            "post-decode invariant mismatch: H*correction != syndrome");
+                    } else {
+                        int logical_x_parity = 0;
+                        int logical_z_parity = 0;
+                        const auto& lx = code.logicalXSupport();
+                        const auto& lz = code.logicalZSupport();
+                        for (int q = 0; q < n; ++q) {
+                            if (ex_ptr[q] & 1u) {
+                                logical_x_parity ^= (lx[q] & 1);
+                                logical_z_parity ^= (lz[q] & 1);
+                            }
+                        }
+                        for (int q : corr.qubit_flips) {
+                            if (q < 0 || q >= n) continue;
+                            logical_x_parity ^= (lx[q] & 1);
+                            logical_z_parity ^= (lz[q] & 1);
+                        }
+                        r.logical_failure = ((logical_x_parity & 1) != 0) || ((logical_z_parity & 1) != 0);
+                    }
+                } catch (const std::exception& ex) {
+                    r.decoder_failed = true;
+                    r.logical_failure = true;
+                    r.correction_weight = 0;
+                    r.failure_dump = buildFailureDump(
+                        decoder_name,
+                        d,
+                        p,
+                        t,
+                        seed,
+                        {},
+                        sz_vec,
+                        nullptr,
+                        nullptr,
+                        ex.what());
+                } catch (...) {
+                    r.decoder_failed = true;
+                    r.logical_failure = true;
+                    r.correction_weight = 0;
+                    r.failure_dump = buildFailureDump(
+                        decoder_name,
+                        d,
+                        p,
+                        t,
+                        seed,
+                        {},
+                        sz_vec,
+                        nullptr,
+                        nullptr,
+                        "unknown exception");
+                }
+            }
+
+            if (r.logical_failure) local_logical_fail += 1;
+            if (r.decoder_failed) {
+                local_decoder_fail += 1;
+                if (!r.failure_dump.empty()) {
+                    bool expected = false;
+                    if (first_failure_dumped.compare_exchange_strong(expected, true)) {
+                        std::ofstream dump("surface_decoder_failure_dump.txt", std::ios::out | std::ios::trunc);
+                        if (dump.is_open()) {
+                            dump << r.failure_dump;
+                        }
+                    }
+                }
+            }
+
+            local_defects += static_cast<double>(r.defect_count);
+            local_defects_sq += static_cast<double>(r.defect_count) * static_cast<double>(r.defect_count);
+            local_weight += static_cast<double>(r.correction_weight);
+            local_weight_sq += static_cast<double>(r.correction_weight) * static_cast<double>(r.correction_weight);
+            local_trials += 1;
+        }
+
+#pragma omp atomic
+        logical_failures += local_logical_fail;
+#pragma omp atomic
+        decoder_failures += local_decoder_fail;
+#pragma omp atomic
+        total_trials += local_trials;
+#pragma omp atomic
+        total_defects += local_defects;
+#pragma omp atomic
+        total_defects_sq += local_defects_sq;
+#pragma omp atomic
+        total_weight += local_weight;
+#pragma omp atomic
+        total_weight_sq += local_weight_sq;
+    }
+#else
+    std::unique_ptr<IDecoderPlugin> plugin_base;
+    ISurfaceDecoderPlugin* surf_plugin = nullptr;
+    std::string plugin_init_error;
+    try {
+        plugin_base = reg.create(decoder_name);
+        surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
+        if (surf_plugin == nullptr) {
+            plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
+        } else {
+            surf_plugin->configure(dec_cfg);
+        }
+    } catch (const std::exception& ex) {
+        plugin_init_error = ex.what();
+    } catch (...) {
+        plugin_init_error = "unknown exception creating/configuring decoder plugin";
+    }
+
+    std::vector<int> sz_vec(static_cast<size_t>(m), 0);
+
+    for (int i = 0; i < batch_trials; ++i) {
+        const long long t = start_trial + i;
+        const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, t, 0);
+        const unsigned char* ex_ptr = ex_batch.data() + static_cast<size_t>(i) * static_cast<size_t>(n);
+        const unsigned char* sz_ptr = sz_batch.data() + static_cast<size_t>(i) * static_cast<size_t>(m);
+
+        SingleTrialResult r;
+        int defect_count = 0;
+        for (int row = 0; row < m; ++row) {
+            const int bit = static_cast<int>(sz_ptr[row] & 1u);
+            sz_vec[static_cast<size_t>(row)] = bit;
+            defect_count += bit;
+        }
+        r.defect_count = defect_count;
+
+        if (surf_plugin == nullptr) {
+            r.decoder_failed = true;
+            r.logical_failure = true;
+            r.correction_weight = 0;
+            r.failure_dump = buildFailureDump(
+                decoder_name,
+                d,
+                p,
+                t,
+                seed,
+                {},
+                sz_vec,
+                nullptr,
+                nullptr,
+                plugin_init_error.empty() ? "decoder plugin unavailable" : plugin_init_error);
+        } else {
             try {
-                plugin_base = reg.create(decoder_name);
-                surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
-                if (surf_plugin == nullptr) {
-                    plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
+                SurfaceSyndrome decode_syn;
+                decode_syn.sz = sz_vec;
+                const SurfaceCorrection corr = surf_plugin->decode(decode_syn, code);
+
+                const std::vector<int> syn_after = syndromeFromCorrection(hz_rows, code.n(), corr);
+                bool invariant_ok = (syn_after.size() == sz_vec.size());
+                if (invariant_ok) {
+                    for (size_t k = 0; k < syn_after.size(); ++k) {
+                        if ((syn_after[k] & 1) != (sz_vec[k] & 1)) {
+                            invariant_ok = false;
+                            break;
+                        }
+                    }
+                }
+
+                int weight = corr.weight;
+                if (weight == 0 && !corr.qubit_flips.empty()) {
+                    weight = SurfacePipeline::correctionWeight(corr, code.n());
+                }
+                r.correction_weight = weight;
+
+                if (!invariant_ok) {
+                    r.decoder_failed = true;
+                    r.logical_failure = true;
+                    r.failure_dump = buildFailureDump(
+                        decoder_name,
+                        d,
+                        p,
+                        t,
+                        seed,
+                        {},
+                        sz_vec,
+                        &corr,
+                        &syn_after,
+                        "post-decode invariant mismatch: H*correction != syndrome");
                 } else {
-                    surf_plugin->configure(dec_cfg);
+                    int logical_x_parity = 0;
+                    int logical_z_parity = 0;
+                    const auto& lx = code.logicalXSupport();
+                    const auto& lz = code.logicalZSupport();
+                    for (int q = 0; q < n; ++q) {
+                        if (ex_ptr[q] & 1u) {
+                            logical_x_parity ^= (lx[q] & 1);
+                            logical_z_parity ^= (lz[q] & 1);
+                        }
+                    }
+                    for (int q : corr.qubit_flips) {
+                        if (q < 0 || q >= n) continue;
+                        logical_x_parity ^= (lx[q] & 1);
+                        logical_z_parity ^= (lz[q] & 1);
+                    }
+                    r.logical_failure = ((logical_x_parity & 1) != 0) || ((logical_z_parity & 1) != 0);
                 }
             } catch (const std::exception& ex) {
-                plugin_init_error = ex.what();
+                r.decoder_failed = true;
+                r.logical_failure = true;
+                r.correction_weight = 0;
+                r.failure_dump = buildFailureDump(
+                    decoder_name,
+                    d,
+                    p,
+                    t,
+                    seed,
+                    {},
+                    sz_vec,
+                    nullptr,
+                    nullptr,
+                    ex.what());
             } catch (...) {
-                plugin_init_error = "unknown exception creating/configuring decoder plugin";
+                r.decoder_failed = true;
+                r.logical_failure = true;
+                r.correction_weight = 0;
+                r.failure_dump = buildFailureDump(
+                    decoder_name,
+                    d,
+                    p,
+                    t,
+                    seed,
+                    {},
+                    sz_vec,
+                    nullptr,
+                    nullptr,
+                    "unknown exception");
             }
+        }
+
+        if (r.logical_failure) logical_failures += 1;
+        if (r.decoder_failed) {
+            decoder_failures += 1;
+            if (!r.failure_dump.empty()) {
+                bool expected = false;
+                if (first_failure_dumped.compare_exchange_strong(expected, true)) {
+                    std::ofstream dump("surface_decoder_failure_dump.txt", std::ios::out | std::ios::trunc);
+                    if (dump.is_open()) {
+                        dump << r.failure_dump;
+                    }
+                }
+            }
+        }
+
+        total_defects += static_cast<double>(r.defect_count);
+        total_defects_sq += static_cast<double>(r.defect_count) * static_cast<double>(r.defect_count);
+        total_weight += static_cast<double>(r.correction_weight);
+        total_weight_sq += static_cast<double>(r.correction_weight) * static_cast<double>(r.correction_weight);
+        total_trials += 1;
+    }
+#endif
+
+    out->trials = total_trials;
+    out->fail_count = logical_failures;
+    out->decoder_fail_count = decoder_failures;
+    out->defect_sum = total_defects;
+    out->defect_sumsq = total_defects_sq;
+    out->weight_sum = total_weight;
+    out->weight_sumsq = total_weight_sq;
+    return true;
+}
+
+PointAccum runBatchTrials(const SurfaceCode& code,
+                          const SparseRows& hx_rows,
+                          const SparseRows& hz_rows,
+                          SurfacePipeline& pipeline,
+                          const PluginRegistry& reg,
+                          const std::string& decoder_name,
+                          const DecoderConfig& dec_cfg,
+                          NoiseMode mode,
+                          const GKPNoiseConfig& gkp_cfg,
+                          double cv_sigma,
+                          double p,
+                          uint64_t seed_base,
+                          int d,
+                          int p_key,
+                          long long start_trial,
+                          int batch_trials,
+                          gpu::SurfaceGpuSampler* gpu_sampler,
+                          std::atomic<bool>& first_failure_dumped) {
+    if (gpu_sampler != nullptr && mode == NoiseMode::Pauli) {
+        PointAccum acc;
+        std::string gpu_error;
+        if (runBatchTrialsGpu(code, hz_rows, reg, decoder_name, dec_cfg, p, seed_base, d, p_key,
+                              start_trial, batch_trials, *gpu_sampler, first_failure_dumped, &acc, &gpu_error)) {
+            return acc;
+        }
+        std::cerr << "WARNING: GPU batch failed, falling back to CPU: " << gpu_error << "\n";
+    }
+    return runBatchTrialsCpu(code, hx_rows, hz_rows, pipeline, reg, decoder_name, dec_cfg, mode,
+                             gkp_cfg, cv_sigma, p, seed_base, d, p_key, start_trial, batch_trials,
+                             first_failure_dumped);
+}
+
+PointAccum runBatchTrialsCpu(const SurfaceCode& code,
+                          const SparseRows& hx_rows,
+                          const SparseRows& hz_rows,
+                          SurfacePipeline& pipeline,
+                          const PluginRegistry& reg,
+                          const std::string& decoder_name,
+                          const DecoderConfig& dec_cfg,
+                          NoiseMode mode,
+                          const GKPNoiseConfig& gkp_cfg,
+                          double cv_sigma,
+                          double p,
+                          uint64_t seed_base,
+                          int d,
+                          int p_key,
+                          long long start_trial,
+                          int batch_trials,
+                          std::atomic<bool>& first_failure_dumped) {
+    PointAccum acc;
+    long long logical_failures = 0;
+    long long decoder_failures = 0;
+    long long total_trials = 0;
+    double total_defects = 0.0;
+    double total_defects_sq = 0.0;
+    double total_weight = 0.0;
+    double total_weight_sq = 0.0;
+    const bool hybrid_mode = (mode == NoiseMode::Hybrid);
+    const bool gkp_mode = (mode == NoiseMode::GKP);
+
+#ifdef _OPENMP
+#pragma omp parallel
+    {
+        long long local_logical_fail = 0;
+        long long local_decoder_fail = 0;
+        long long local_trials = 0;
+        double local_defects = 0.0;
+        double local_defects_sq = 0.0;
+        double local_weight = 0.0;
+        double local_weight_sq = 0.0;
+
+        std::unique_ptr<IDecoderPlugin> plugin_base;
+        ISurfaceDecoderPlugin* surf_plugin = nullptr;
+        std::string plugin_init_error;
+        try {
+            plugin_base = reg.create(decoder_name);
+            surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
+            if (surf_plugin == nullptr) {
+                plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
+            } else {
+                surf_plugin->configure(dec_cfg);
+            }
+        } catch (const std::exception& ex) {
+            plugin_init_error = ex.what();
+        } catch (...) {
+            plugin_init_error = "unknown exception creating/configuring decoder plugin";
         }
 
 #pragma omp for schedule(static)
@@ -876,9 +1540,45 @@ PointAccum runBatchTrials(const SurfaceCode& code,
             const long long t = start_trial + i;
             const int thread_id = omp_get_thread_num();
             SingleTrialResult r;
-            if (hybrid_mode) {
+            if (gkp_mode && surf_plugin != nullptr) {
+                r = run_single_trial_gkp(
+                    code, hx_rows, hz_rows, *surf_plugin, decoder_name, cv_sigma, gkp_cfg,
+                    seed_base, d, p_key, t, thread_id);
+            } else if (gkp_mode) {
+                const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, t, thread_id);
+                r.decoder_failed = true;
+                r.logical_failure = true;
+                r.correction_weight = 0;
+                r.failure_dump = buildFailureDump(
+                    decoder_name,
+                    d,
+                    cv_sigma,
+                    t,
+                    seed,
+                    {},
+                    {},
+                    nullptr,
+                    nullptr,
+                    plugin_init_error.empty() ? "decoder plugin unavailable" : plugin_init_error);
+            } else if (hybrid_mode && surf_plugin != nullptr) {
                 r = run_single_trial_hybrid(
-                    decoder_name, p, seed_base, d, p_key, t, thread_id, cv_sigma);
+                    surf_plugin, decoder_name, p, seed_base, d, p_key, t, thread_id, cv_sigma);
+            } else if (hybrid_mode) {
+                const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, t, thread_id);
+                r.decoder_failed = true;
+                r.logical_failure = true;
+                r.correction_weight = 0;
+                r.failure_dump = buildFailureDump(
+                    decoder_name,
+                    d,
+                    p,
+                    t,
+                    seed,
+                    {},
+                    {},
+                    nullptr,
+                    nullptr,
+                    plugin_init_error.empty() ? "decoder plugin unavailable" : plugin_init_error);
             } else if (surf_plugin != nullptr) {
                 r = run_single_trial_discrete(
                     code, hz_rows, pipeline, *surf_plugin, decoder_name, p, seed_base, d, p_key, t, thread_id);
@@ -942,28 +1642,62 @@ PointAccum runBatchTrials(const SurfaceCode& code,
     std::unique_ptr<IDecoderPlugin> plugin_base;
     ISurfaceDecoderPlugin* surf_plugin = nullptr;
     std::string plugin_init_error;
-    if (!hybrid_mode) {
-        try {
-            plugin_base = reg.create(decoder_name);
-            surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
-            if (surf_plugin == nullptr) {
-                plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
-            } else {
-                surf_plugin->configure(dec_cfg);
-            }
-        } catch (const std::exception& ex) {
-            plugin_init_error = ex.what();
-        } catch (...) {
-            plugin_init_error = "unknown exception creating/configuring decoder plugin";
+    try {
+        plugin_base = reg.create(decoder_name);
+        surf_plugin = dynamic_cast<ISurfaceDecoderPlugin*>(plugin_base.get());
+        if (surf_plugin == nullptr) {
+            plugin_init_error = "selected plugin is not a surface decoder: " + decoder_name;
+        } else {
+            surf_plugin->configure(dec_cfg);
         }
+    } catch (const std::exception& ex) {
+        plugin_init_error = ex.what();
+    } catch (...) {
+        plugin_init_error = "unknown exception creating/configuring decoder plugin";
     }
 
     for (int i = 0; i < batch_trials; ++i) {
         const long long t = start_trial + i;
         SingleTrialResult r;
-        if (hybrid_mode) {
+        if (gkp_mode && surf_plugin != nullptr) {
+            r = run_single_trial_gkp(
+                code, hx_rows, hz_rows, *surf_plugin, decoder_name, cv_sigma, gkp_cfg,
+                seed_base, d, p_key, t, 0);
+        } else if (gkp_mode) {
+            const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, t, 0);
+            r.decoder_failed = true;
+            r.logical_failure = true;
+            r.correction_weight = 0;
+            r.failure_dump = buildFailureDump(
+                decoder_name,
+                d,
+                cv_sigma,
+                t,
+                seed,
+                {},
+                {},
+                nullptr,
+                nullptr,
+                plugin_init_error.empty() ? "decoder plugin unavailable" : plugin_init_error);
+        } else if (hybrid_mode && surf_plugin != nullptr) {
             r = run_single_trial_hybrid(
-                decoder_name, p, seed_base, d, p_key, t, 0, cv_sigma);
+                surf_plugin, decoder_name, p, seed_base, d, p_key, t, 0, cv_sigma);
+        } else if (hybrid_mode) {
+            const uint64_t seed = thresholdTrialSeed(seed_base, d, p_key, t, 0);
+            r.decoder_failed = true;
+            r.logical_failure = true;
+            r.correction_weight = 0;
+            r.failure_dump = buildFailureDump(
+                decoder_name,
+                d,
+                p,
+                t,
+                seed,
+                {},
+                {},
+                nullptr,
+                nullptr,
+                plugin_init_error.empty() ? "decoder plugin unavailable" : plugin_init_error);
         } else if (surf_plugin != nullptr) {
             r = run_single_trial_discrete(
                 code, hz_rows, pipeline, *surf_plugin, decoder_name, p, seed_base, d, p_key, t, 0);
@@ -1219,6 +1953,8 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg) {
 int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginRegistry& reg) {
     std::remove("surface_decoder_failure_dump.txt");
     const bool hybrid_mode = (cfg.mode == NoiseMode::Hybrid);
+    const bool gkp_mode = (cfg.mode == NoiseMode::GKP);
+    const bool sigma_mode = hybrid_mode || gkp_mode;
     const std::string surface_mode = noiseModeName(cfg.mode);
 
     std::ofstream out(cfg.out_csv);
@@ -1234,12 +1970,12 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         std::cout << "WARNING: unknown decoder '" << cfg.decoder_name
                   << "', falling back to mwpm\n";
     }
-    if (hybrid_mode && decoder_name != "mwpm") {
-        std::cout << "WARNING: hybrid mode uses MWPM decode path; forcing decoder=mwpm\n";
-        decoder_name = "mwpm";
-    }
-    if (!hybrid_mode && decoder_name == "neural_mwpm" && !fileExists(cfg.neural_model_path)) {
+    if (decoder_name == "neural_mwpm" && !fileExists(cfg.neural_model_path)) {
         std::cerr << "ERROR: neural_mwpm requires --neural_model <path>\n";
+        return 1;
+    }
+    if (gkp_mode && !cfg.gkp_loss_map.empty() && cfg.distances.size() > 1) {
+        std::cerr << "error: gkp_loss_map requires a single distance (use --d=<single>)\n";
         return 1;
     }
     std::string mwpm_graph = cfg.mwpm_graph;
@@ -1249,11 +1985,11 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         mwpm_graph = "full";
     }
 
-    const std::vector<double> sweep_values = hybrid_mode
+    const std::vector<double> sweep_values = sigma_mode
         ? makeSweepGrid(cfg.sigma_start, cfg.sigma_end, cfg.sigma_step)
         : makeSweepGrid(cfg.p_start, cfg.p_end, cfg.p_step);
     if (sweep_values.empty()) {
-        std::cerr << "error: empty " << (hybrid_mode ? "sigma" : "p")
+        std::cerr << "error: empty " << (sigma_mode ? "sigma" : "p")
                   << " grid for threshold run\n";
         return 1;
     }
@@ -1268,12 +2004,12 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
 #endif
     std::cout << "threshold: threads=" << threads << "\n";
     std::cout << "mode: " << surface_mode;
-    if (hybrid_mode) {
+    if (sigma_mode) {
         std::cout << " sigma_range=[" << sweep_values.front() << "," << sweep_values.back()
                   << "] step=" << cfg.sigma_step;
     }
     std::cout << "\n";
-    if (!hybrid_mode && cfg.weight_mode == "llr") {
+    if (!sigma_mode && cfg.weight_mode == "llr") {
         const auto p_or_sweep = [](double v) -> std::string {
             if (v >= 0.0) {
                 std::ostringstream oss;
@@ -1290,8 +2026,8 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                   << " mwpm_weight_scale=" << cfg.mwpm_weight_scale
                   << " mwpm_graph=" << mwpm_graph
                   << "\n";
-    } else if (hybrid_mode) {
-        std::cout << "weights: hybrid mode (pauli p disabled)"
+    } else if (sigma_mode) {
+        std::cout << "weights: sigma mode (pauli p disabled)"
                   << " mwpm_weight_scale=" << cfg.mwpm_weight_scale
                   << " mwpm_graph=" << mwpm_graph
                   << "\n";
@@ -1323,13 +2059,43 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
     for (int d : cfg.distances) {
         SurfaceCode code(d);
         SurfacePipeline pipeline(code);
+        const SparseRows hx_rows = buildSparseRows(code.Hx());
         const SparseRows hz_rows = buildSparseRows(code.Hz());
+        std::unique_ptr<gpu::SurfaceGpuSampler> gpu_sampler;
+
+        if (cfg.use_gpu) {
+            if (cfg.mode != NoiseMode::Pauli) {
+                std::cout << "WARNING: GPU backend currently supports pauli mode only; using CPU.\n";
+            } else if (!gpu::is_available()) {
+                std::cout << "WARNING: GPU backend requested but no CUDA device detected; using CPU.\n";
+            } else {
+                std::string gpu_error;
+                gpu_sampler = std::make_unique<gpu::SurfaceGpuSampler>(code.n(), hz_rows, &gpu_error);
+                if (!gpu_sampler->ok()) {
+                    std::cout << "WARNING: GPU backend init failed; using CPU. " << gpu_error << "\n";
+                    gpu_sampler.reset();
+                } else {
+                    std::cout << "gpu: " << gpu::backend_name() << " device=" << gpu::device_name()
+                              << " pauli sampling enabled\n";
+                }
+            }
+        }
+
+        if (gkp_mode && !cfg.gkp_loss_map.empty()
+            && static_cast<int>(cfg.gkp_loss_map.size()) != code.n()) {
+            std::cerr << "error: gkp_loss_map size must match code.n() ("
+                      << cfg.gkp_loss_map.size() << " vs " << code.n() << ")\n";
+            return 1;
+        }
 
         DecoderConfig dec_cfg;
         dec_cfg.decoder_name = decoder_name;
         dec_cfg.distance = d;
         dec_cfg.seed = cfg.seed + static_cast<uint64_t>(d) * 1000000ULL;
+        dec_cfg.alpha = cfg.bp_alpha;
         dec_cfg.string_params["decoder_name"] = decoder_name;
+        dec_cfg.string_params["bp_mode"] =
+            (cfg.bp_mode == BeliefPropagation::Mode::NORMALIZED_MIN_SUM) ? "nms" : "sum-product";
         dec_cfg.string_params["weight_mode"] = cfg.weight_mode;
         dec_cfg.string_params["mwpm_graph"] = mwpm_graph;
         dec_cfg.string_params["neural_model"] = cfg.neural_model_path;
@@ -1341,7 +2107,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             (cfg.uf_weighted || cfg.weight_mode == "neural" || cfg.weight_mode == "llr") ? 1 : 0;
         dec_cfg.ptr_params["surface_code"] = &code;
 
-        if (!hybrid_mode) {
+        {
             std::unique_ptr<IDecoderPlugin> check_plugin = reg.create(decoder_name);
             auto* check_surface = dynamic_cast<ISurfaceDecoderPlugin*>(check_plugin.get());
             if (check_surface == nullptr) {
@@ -1355,13 +2121,13 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         double smoothed_ler = 0.0;
         for (size_t sweep_index = 0; sweep_index < sweep_values.size(); ++sweep_index) {
             const double sweep = sweep_values[sweep_index];
-            const double sigma = hybrid_mode ? sweep : 0.0;
-            const double p = hybrid_mode ? 0.0 : sweep;
+            const double sigma = sigma_mode ? sweep : 0.0;
+            const double p = sigma_mode ? 0.0 : sweep;
             const int p_key = static_cast<int>(std::llround(sweep * 1e6));
             dec_cfg.p = p;
-            const double llr_p_data = hybrid_mode ? 0.0 : ((cfg.llr_p_data >= 0.0) ? cfg.llr_p_data : p);
-            const double llr_p_meas = hybrid_mode ? 0.0 : ((cfg.llr_p_meas >= 0.0) ? cfg.llr_p_meas : p);
-            const double llr_p_idle = hybrid_mode ? 0.0 : ((cfg.llr_p_idle >= 0.0) ? cfg.llr_p_idle : p);
+            const double llr_p_data = sigma_mode ? 0.0 : ((cfg.llr_p_data >= 0.0) ? cfg.llr_p_data : p);
+            const double llr_p_meas = sigma_mode ? 0.0 : ((cfg.llr_p_meas >= 0.0) ? cfg.llr_p_meas : p);
+            const double llr_p_idle = sigma_mode ? 0.0 : ((cfg.llr_p_idle >= 0.0) ? cfg.llr_p_idle : p);
             dec_cfg.double_params["llr_p_data"] = llr_p_data;
             dec_cfg.double_params["llr_p_meas"] = llr_p_meas;
             dec_cfg.double_params["llr_p_idle"] = llr_p_idle;
@@ -1369,7 +2135,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             dec_cfg.double_params["llr_clamp_max"] = cfg.llr_clamp_max;
             dec_cfg.double_params["mwpm_weight_scale"] = cfg.mwpm_weight_scale;
 
-            if (hybrid_mode) {
+            if (sigma_mode) {
                 std::cout << "running d=" << d
                           << " sigma=" << std::fixed << std::setprecision(3) << sigma
                           << " target_trials=" << resolved_max_trials
@@ -1399,12 +2165,15 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
 
                 const PointAccum batch_acc = runBatchTrials(
                     code,
+                    hx_rows,
                     hz_rows,
                     pipeline,
                     reg,
                     decoder_name,
                     dec_cfg,
-                    hybrid_mode,
+                    cfg.mode,
+                    GKPNoiseConfig{cfg.gkp_gate_error, cfg.gkp_meas_error,
+                                   cfg.gkp_idle_error, cfg.gkp_loss_prob, cfg.gkp_loss_map},
                     sigma,
                     p,
                     dec_cfg.seed,
@@ -1412,12 +2181,13 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                     p_key + static_cast<int>(sweep_index * 997),
                     accum.trials,
                     batch,
+                    gpu_sampler.get(),
                     first_failure_dumped);
                 mergeAccum(accum, batch_acc);
 
                 if (accum.trials >= next_progress && accum.trials < resolved_max_trials) {
                     std::cout << "progress d=" << d;
-                    if (hybrid_mode) {
+                    if (sigma_mode) {
                         std::cout << " sigma=" << std::fixed << std::setprecision(3) << sigma;
                     } else {
                         std::cout << " p=" << std::fixed << std::setprecision(3) << p;
@@ -1443,7 +2213,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             PointStats stats = finalizePoint(accum, cfg.target_ci_halfwidth, cfg.target_rel_ci);
             if (!fixed_mode && !ci_met && accum.trials >= resolved_max_trials) {
                 std::cout << "NOTE: reached max_trials at d=" << d << ", ";
-                if (hybrid_mode) {
+                if (sigma_mode) {
                     std::cout << "sigma=" << sigma;
                 } else {
                     std::cout << "p=" << p;
@@ -1452,7 +2222,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
             }
             if (stats.decoder_fail_rate > 0.0) {
                 std::cout << "WARNING: decoder_fail_rate>0 at d=" << d;
-                if (hybrid_mode) {
+                if (sigma_mode) {
                     std::cout << " sigma=" << sigma;
                 } else {
                     std::cout << " p=" << p;
@@ -1462,14 +2232,14 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                           << " (first failure dump: surface_decoder_failure_dump.txt)\n";
             }
 
-            if (!hybrid_mode && std::abs(p) <= kEps && stats.ler > kEps) {
+            if (!sigma_mode && std::abs(p) <= kEps && stats.ler > kEps) {
                 std::cout << "WARNING: p=0 produced non-zero LER at d=" << d
                           << " (LER=" << stats.ler
                           << ", trials=" << stats.trials << ")\n";
             }
             if (prev_raw_ler >= 0.0 && stats.ler + kEps < prev_raw_ler) {
                 std::cout << "WARNING: non-monotonic LER at d=" << d;
-                if (hybrid_mode) {
+                if (sigma_mode) {
                     std::cout << " sigma=" << sigma;
                 } else {
                     std::cout << " p=" << p;
@@ -1512,7 +2282,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                 << "\n";
 
             std::cout << std::fixed << "d=" << d;
-            if (hybrid_mode) {
+            if (sigma_mode) {
                 std::cout << " sigma=" << std::setprecision(3) << sigma;
             } else {
                 std::cout << " p=" << std::setprecision(3) << p;
@@ -1529,7 +2299,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         }
     }
 
-    if (hybrid_mode) {
+    if (sigma_mode) {
         const auto crossing_est = estimateSigmaCrossings(results, cfg.distances);
         for (const auto& c : crossing_est) {
             std::cout << "Estimated crossing between d=" << c.first.first
@@ -1538,7 +2308,8 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
                       << "\n";
         }
 
-        if (writeHybridPlotScript(cfg.out_csv, "plot_threshold.py")) {
+        const std::string plot_title = gkp_mode ? "GKP Sigma Threshold Curve" : "Hybrid CV-Discrete Threshold Curve";
+        if (writeSigmaPlotScript(cfg.out_csv, "plot_threshold.py", surface_mode, plot_title)) {
             std::cout << "Plot script written to plot_threshold.py\n";
             const int py_status = std::system("python3 plot_threshold.py > /dev/null 2>&1");
             if (py_status == 0) {
@@ -1551,7 +2322,7 @@ int SurfaceThresholdRunner::run(const SurfaceThresholdConfig& cfg, const PluginR
         }
 
         std::cout << "--------------------------------\n";
-        std::cout << "Hybrid Threshold Summary\n";
+        std::cout << "Sigma Threshold Summary\n";
         std::cout << "--------------------------------\n";
         std::cout << "Distances tested: " << distancesCsv(cfg.distances) << "\n";
         std::cout << "Sigma range: " << std::fixed << std::setprecision(2)

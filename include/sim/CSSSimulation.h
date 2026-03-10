@@ -16,14 +16,16 @@ struct CSSDemoPointStats {
 class CSSSimulation {
 public:
     static CSSDemoPointStats run_point(QuantumCSSSimulator& sim,
-                                       double p,
+                                       double sweep_value,
                                        int trials,
                                        uint64_t seed_base,
-                                       const LogicalPair* logicals);
+                                       const LogicalOperators* logicals,
+                                       QECNoiseModel noise_model = QECNoiseModel::INDEPENDENT_XZ);
 
     static std::vector<CSSDemoPointStats> run_css_demo(QuantumCSSSimulator& sim,
-                                                        const std::vector<double>& p_values,
+                                                        const std::vector<double>& sweep_values,
                                                         int trials,
                                                         uint64_t seed_base,
-                                                        const LogicalPair* logicals);
+                                                        const LogicalOperators* logicals,
+                                                        QECNoiseModel noise_model = QECNoiseModel::INDEPENDENT_XZ);
 };

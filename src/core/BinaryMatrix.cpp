@@ -5,6 +5,7 @@
 
 BinaryMatrix::BinaryMatrix(int rows, int cols) {
     data.resize(rows, std::vector<int>(cols, 0));
+    cols_ = cols;
 }
 
 void BinaryMatrix::set(int row, int col, int value) {
@@ -20,7 +21,7 @@ int BinaryMatrix::rows() const {
 }
 
 int BinaryMatrix::cols() const {
-    return data[0].size();
+    return cols_;
 }
 
 void BinaryMatrix::print() const {

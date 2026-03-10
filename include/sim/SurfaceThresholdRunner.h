@@ -3,12 +3,14 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "decoders/BeliefPropagation.h"
 
 class PluginRegistry;
 
 enum class NoiseMode {
     Pauli,
-    Hybrid
+    Hybrid,
+    GKP
 };
 
 struct SurfaceThresholdConfig {
@@ -38,6 +40,11 @@ struct SurfaceThresholdConfig {
     std::string mwpm_graph = "full";
     std::string neural_weights_path;
     std::string neural_model_path;
+    double gkp_gate_error = 0.0;
+    double gkp_meas_error = 0.0;
+    double gkp_idle_error = 0.0;
+    double gkp_loss_prob = 0.0;
+    std::vector<double> gkp_loss_map;
     int min_trials = 200;
     int max_trials = 0; // resolved at runtime
     double target_ci_halfwidth = 0.01;
@@ -48,6 +55,7 @@ struct SurfaceThresholdConfig {
     bool estimate_threshold = false;
     bool scaling_fit = false;
     int threads = 0; // <=0: use OpenMP runtime/environment default
+    bool use_gpu = false;
     int scaling_bootstrap = 200;
     uint64_t scaling_seed = 12345;
     bool pc_min_set = false;
@@ -63,6 +71,8 @@ struct SurfaceThresholdConfig {
     double ler_smooth_eps = 0.0;
     std::string scaling_report = "surface_scaling_report.md";
     std::string scaling_json = "surface_scaling_summary.json";
+    BeliefPropagation::Mode bp_mode = BeliefPropagation::Mode::SUM_PRODUCT;
+    double bp_alpha = 0.8;
 };
 
 class SurfaceThresholdRunner {

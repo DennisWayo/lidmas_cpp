@@ -5,8 +5,13 @@
 #include <memory>
 
 #include "codes/LDPCGenerator.h"
+#include "core/DecoderConfig.h"
 #include "decoders/BPDecoderAdapter.h"
+#include "gpu/SurfaceGpuSampler.h"
 #include "graph/TannerGraph.h"
+#include "hybrid/hybrid_engine.hpp"
+#include "plugins/mwpm/MWPMPlugin.h"
+#include "plugins/uf/UnionFindPlugin.h"
 #include "qec/PauliChannelAdapter.h"
 #include "qec/QuantumCSSSimulator.h"
 #include "sim/CSSSimulation.h"
@@ -33,6 +38,18 @@ bool syndrome_is_zero(const std::vector<int>& s) {
     }
     return true;
 }
+
+class ZeroCorrectionSurfacePlugin : public ISurfaceDecoderPlugin {
+public:
+    std::string name() const override { return "zero_correction"; }
+    std::string family() const override { return "surface"; }
+    void configure(const DecoderConfig& cfg) override { (void)cfg; }
+    SurfaceCorrection decode(const SurfaceSyndrome& syn, const SurfaceCode& code) override {
+        (void)syn;
+        (void)code;
+        return {};
+    }
+};
 
 } // namespace
 
@@ -63,13 +80,15 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
     }
 
     // CSS sanity at zero noise.
-    BinaryMatrix Hx(2, 5);
-    Hx.set(0, 0, 1); Hx.set(0, 1, 1);
-    Hx.set(1, 1, 1); Hx.set(1, 2, 1);
+    BinaryMatrix Hx(3, 7);
+    Hx.set(0, 0, 1); Hx.set(0, 1, 1); Hx.set(0, 2, 1); Hx.set(0, 4, 1);
+    Hx.set(1, 0, 1); Hx.set(1, 1, 1); Hx.set(1, 3, 1); Hx.set(1, 5, 1);
+    Hx.set(2, 0, 1); Hx.set(2, 2, 1); Hx.set(2, 3, 1); Hx.set(2, 6, 1);
 
-    BinaryMatrix Hz(2, 5);
-    Hz.set(0, 0, 1); Hz.set(0, 1, 1); Hz.set(0, 2, 1);
-    Hz.set(1, 3, 1); Hz.set(1, 4, 1);
+    BinaryMatrix Hz(3, 7);
+    Hz.set(0, 0, 1); Hz.set(0, 1, 1); Hz.set(0, 2, 1); Hz.set(0, 4, 1);
+    Hz.set(1, 0, 1); Hz.set(1, 1, 1); Hz.set(1, 3, 1); Hz.set(1, 5, 1);
+    Hz.set(2, 0, 1); Hz.set(2, 2, 1); Hz.set(2, 3, 1); Hz.set(2, 6, 1);
 
     const TannerGraph Gx(Hx);
     const TannerGraph Gz(Hz);
@@ -83,13 +102,19 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
     PauliChannelAdapter qec_channel;
     QuantumCSSSimulator sim(Hx, Hz, dec_x_factory, dec_z_factory, qec_channel);
 
-    LogicalPair logicals;
-    logicals.LX = {1, 0, 0, 1, 0};
-    logicals.LZ = {0, 0, 1, 0, 1};
+    LogicalOperators logicals;
+    logicals.LX = {{1, 1, 1, 1, 1, 1, 1}};
+    logicals.LZ = {{1, 1, 1, 1, 1, 1, 1}};
 
     const auto css0 = CSSSimulation::run_point(sim, 0.0, 20, 7200000, &logicals);
     if (!near_zero(css0.ler_total)) {
         std::cerr << "[selftest] CSS p=0 failed\n";
+        return false;
+    }
+    const auto css_hybrid0 = CSSSimulation::run_point(
+        sim, 0.0, 20, 7201000, &logicals, QECNoiseModel::HYBRID_GKP);
+    if (!near_zero(css_hybrid0.ler_total)) {
+        std::cerr << "[selftest] CSS hybrid sigma=0 failed\n";
         return false;
     }
 
@@ -263,6 +288,98 @@ bool run_self_tests(const BeliefPropagation::Params& params) {
                     }
                 }
             }
+        }
+    }
+
+    // Hybrid decoder plumbing sanity: hybrid mode must honor the selected plugin.
+    {
+        ZeroCorrectionSurfacePlugin zero_plugin;
+        MWPMPlugin mwpm_plugin;
+        UnionFindPlugin uf_plugin;
+
+        DecoderConfig plugin_cfg;
+        plugin_cfg.string_params["weight_mode"] = "uniform";
+        plugin_cfg.string_params["mwpm_graph"] = "full";
+        plugin_cfg.int_params["uf_weighted"] = 0;
+        mwpm_plugin.configure(plugin_cfg);
+        uf_plugin.configure(plugin_cfg);
+
+        bool exercised_nontrivial_hybrid = false;
+        for (uint64_t seed = 1; seed <= 64; ++seed) {
+            HybridEngine zero_engine(3, 0.35, seed);
+            zero_engine.run_trial(&zero_plugin);
+            const auto zero_result = zero_engine.last_result();
+            if (zero_result.defect_count == 0) continue;
+
+            exercised_nontrivial_hybrid = true;
+            if (!zero_result.decoder_failed) {
+                std::cerr << "[selftest] Hybrid plugin dispatch failed: zero-correction plugin was ignored\n";
+                return false;
+            }
+
+            HybridEngine mwpm_engine(3, 0.35, seed);
+            mwpm_engine.run_trial(&mwpm_plugin);
+            const auto mwpm_result = mwpm_engine.last_result();
+            if (mwpm_result.decoder_failed) {
+                std::cerr << "[selftest] Hybrid MWPM plugin decode failed unexpectedly\n";
+                return false;
+            }
+
+            HybridEngine uf_engine(3, 0.35, seed);
+            uf_engine.run_trial(&uf_plugin);
+            const auto uf_result = uf_engine.last_result();
+            if (uf_result.decoder_failed) {
+                std::cerr << "[selftest] Hybrid Union-Find plugin decode failed unexpectedly\n";
+                return false;
+            }
+            break;
+        }
+
+        if (!exercised_nontrivial_hybrid) {
+            std::cerr << "[selftest] Hybrid plugin dispatch could not find a nontrivial seeded trial\n";
+            return false;
+        }
+    }
+
+    // GPU sampler sanity: p=0 should produce zero defects (if GPU backend is available).
+    {
+        if (gpu::is_available()) {
+            SurfaceCode scode(3);
+            std::vector<std::vector<int>> hz_rows(static_cast<size_t>(scode.Hz().rows()));
+            for (int r = 0; r < scode.Hz().rows(); ++r) {
+                auto& row = hz_rows[static_cast<size_t>(r)];
+                for (int c = 0; c < scode.Hz().cols(); ++c) {
+                    if ((scode.Hz().get(r, c) & 1) != 0) row.push_back(c);
+                }
+            }
+
+            std::string gpu_error;
+            gpu::SurfaceGpuSampler sampler(scode.n(), hz_rows, &gpu_error);
+            if (!sampler.ok()) {
+                std::cerr << "[selftest] GPU sampler init failed: " << gpu_error << "\n";
+                return false;
+            }
+
+            std::vector<unsigned char> ex;
+            std::vector<unsigned char> sz;
+            if (!sampler.sample_pauli_batch(0.0, 9900000ULL, 3, 0, 0, 8, ex, sz, &gpu_error)) {
+                std::cerr << "[selftest] GPU sampler batch failed: " << gpu_error << "\n";
+                return false;
+            }
+            for (unsigned char v : ex) {
+                if ((v & 1u) != 0u) {
+                    std::cerr << "[selftest] GPU sampler p=0 produced non-zero ex\n";
+                    return false;
+                }
+            }
+            for (unsigned char v : sz) {
+                if ((v & 1u) != 0u) {
+                    std::cerr << "[selftest] GPU sampler p=0 produced non-zero syndrome\n";
+                    return false;
+                }
+            }
+        } else {
+            std::cout << "[selftest] GPU backend not available; skipping GPU check\n";
         }
     }
 
