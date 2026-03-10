@@ -13,6 +13,18 @@ surface-code threshold experiments under discrete Pauli noise and hybrid
 continuous-variable (CV)-discrete noise models as the primary workflow. It also
 includes CSS and LDPC engine paths for comparative studies.
 
+Install from PyPI:
+
+```bash
+pip install lidmas
+```
+
+Then run:
+
+```bash
+lidmas --help
+```
+
 ## Statement of Need
 
 Benchmarking decoder behavior and threshold trends requires reproducible, scriptable,
@@ -55,6 +67,13 @@ cmake --build build -j
 Primary executable:
 
 - `build/lidmas`
+
+## Packaging Notes
+
+- Brand name remains **LiDMaS+**.
+- PyPI package name is `lidmas`.
+- CLI command is `lidmas`.
+- Published wheels are CPU-oriented; CUDA builds are supported from source builds.
 
 ### Optional CUDA build (Pauli surface_threshold sampling)
 

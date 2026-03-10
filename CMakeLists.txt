@@ -158,6 +158,13 @@ add_executable(lidmas_surface
 
 target_include_directories(lidmas_surface PRIVATE include)
 
+# Install CLI binary into the Python package layout used by scikit-build-core.
+# This enables `pip install lidmas` to provide a bundled executable invoked by
+# the Python console entrypoint.
+install(TARGETS lidmas
+        RUNTIME DESTINATION lidmas/_bin
+)
+
 if(OpenMP_CXX_FOUND)
     message(STATUS "OpenMP found via find_package")
     target_link_libraries(lidmas PRIVATE OpenMP::OpenMP_CXX)
