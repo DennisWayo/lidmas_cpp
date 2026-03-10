@@ -1,6 +1,6 @@
 site_name: LiDMaS+
 site_description: Logical Injection & Decoding Modeling System
-site_url: https://lidmas-cpp.readthedocs.io/
+site_url: https://denniswayo.github.io/lidmas_cpp/
 repo_url: https://github.com/DennisWayo/lidmas_cpp
 repo_name: DennisWayo/lidmas_cpp
 docs_dir: docs
@@ -21,6 +21,6 @@ nav:
   - CLI Reference: cli-reference.md
   - Examples & Workflows: examples-workflows.md
   - Architecture: architecture.md
+  - Hardware Integration: hardware-integration.md
   - Reproducibility & Citation: reproducibility-citation.md
   - Read the Docs Setup: readthedocs-setup.md
-

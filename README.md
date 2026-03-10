@@ -16,7 +16,7 @@ includes CSS and LDPC engine paths for comparative studies.
 Install from PyPI:
 
 ```bash
-pip install lidmas
+python -m pip install --upgrade lidmas
 ```
 
 Then run:
@@ -24,6 +24,11 @@ Then run:
 ```bash
 lidmas --help
 ```
+
+Documentation:
+
+- GitHub Pages: https://denniswayo.github.io/lidmas_cpp/
+- Read the Docs: https://lidmas-cpp.readthedocs.io/
 
 ## Statement of Need
 
@@ -221,7 +226,7 @@ For quick validation in local or CI environments:
 
 ## Hardware Integration
 
-See [docs/hardware-integration.md](/Users/denniswayo/lidmas_cpp/docs/hardware-integration.md) for the decoder IO schema,
+See [docs/hardware-integration.md](docs/hardware-integration.md) for the decoder IO schema,
 recommended data transport, and adapter API.
 
 ## Project Layout
@@ -241,7 +246,7 @@ GitHub Releases.
 
 If you use LiDMaS+ in academic work, cite the software release used for your
 experiments (tag + commit hash). If a JOSS/arXiv record is available for your
-release, cite that record directly.
+release, please cite that record directly.
 
 Paper reference (`paper_01`):
 
