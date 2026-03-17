@@ -6,36 +6,39 @@ source "${SCRIPT_DIR}/common.sh"
 
 BIN="$(resolve_lidmas_binary "${REPO_ROOT}")"
 ensure_examples_env "${REPO_ROOT}"
-RESULT_DIR="$(paper_results_dir "02_hybrid_baseline")"
+RESULT_DIR="$(paper_results_dir "02_gkp_baseline")"
 PY_BIN="$(paper_python_bin)"
 
-TRIALS="${LIDMAS_TRIALS:-3000}"
+TRIALS="${LIDMAS_TRIALS:-1500}"
 D_VALUE="${LIDMAS_D:-5}"
 SIGMA_START="${LIDMAS_SIGMA_START:-0.05}"
-SIGMA_END="${LIDMAS_SIGMA_END:-0.60}"
+SIGMA_END="${LIDMAS_SIGMA_END:-0.35}"
 SIGMA_STEP="${LIDMAS_SIGMA_STEP:-0.05}"
 SEED="${LIDMAS_SEED:-1337}"
+THREADS="${LIDMAS_THREADS:-1}"
+GKP_GATE="${LIDMAS_GKP_GATE:-0.005}"
+GKP_MEAS="${LIDMAS_GKP_MEAS:-0.01}"
+GKP_IDLE="${LIDMAS_GKP_IDLE:-0.005}"
+GKP_LOSS="${LIDMAS_GKP_LOSS:-0.005}"
+GKP_LOSS_MAP="${LIDMAS_GKP_LOSS_MAP:-}"
 
-declare -a DECODERS=("mwpm" "uf")
-if paper_include_neural; then
-  MODEL_PATH="$(paper_neural_model_path)"
-  if [ -f "${MODEL_PATH}" ]; then
-    DECODERS+=("neural_mwpm")
-  else
-    echo "Warning: neural model not found at ${MODEL_PATH}; skipping neural_mwpm" >&2
-  fi
-fi
+declare -a DECODERS=()
+while IFS= read -r decoder; do
+  DECODERS+=("${decoder}")
+done < <(paper_resolve_decoders)
 
-echo "Running paper baseline experiment 02 (Hybrid, fixed distance)..."
+echo "Running paper baseline experiment 02 (GKP, fixed distance)..."
 echo "Binary: ${BIN}"
 echo "Trials per point: ${TRIALS}"
+echo "Threads: ${THREADS}"
+echo "Decoders: ${DECODERS[*]}"
 
 MERGE_ARGS=()
 for DECODER in "${DECODERS[@]}"; do
   OUT_CSV="${RESULT_DIR}/results_${DECODER}.csv"
   CMD=(
     "${BIN}" --surface_threshold
-    --mode=hybrid
+    --mode=gkp
     --decoder="${DECODER}"
     --d="${D_VALUE}"
     --sigma_start="${SIGMA_START}"
@@ -43,10 +46,26 @@ for DECODER in "${DECODERS[@]}"; do
     --sigma_step="${SIGMA_STEP}"
     --trials="${TRIALS}"
     --seed="${SEED}"
+    --threads="${THREADS}"
     --out="${OUT_CSV}"
   )
   if [ "${DECODER}" = "neural_mwpm" ]; then
     CMD+=(--neural_model="$(paper_neural_model_path)")
+  fi
+  if [ -n "${GKP_GATE}" ]; then
+    CMD+=(--gkp_gate="${GKP_GATE}")
+  fi
+  if [ -n "${GKP_MEAS}" ]; then
+    CMD+=(--gkp_meas="${GKP_MEAS}")
+  fi
+  if [ -n "${GKP_IDLE}" ]; then
+    CMD+=(--gkp_idle="${GKP_IDLE}")
+  fi
+  if [ -n "${GKP_LOSS}" ]; then
+    CMD+=(--gkp_loss="${GKP_LOSS}")
+  fi
+  if [ -n "${GKP_LOSS_MAP}" ]; then
+    CMD+=(--gkp_loss_map="${GKP_LOSS_MAP}")
   fi
   echo "  -> ${DECODER}"
   "${CMD[@]}"
@@ -59,12 +78,12 @@ done
 
 run_publication_plot "${REPO_ROOT}" \
   --input "${RESULT_DIR}/combined.csv" \
-  --output-prefix "${RESULT_DIR}/figure_hybrid_baseline" \
-  --mode hybrid \
+  --output-prefix "${RESULT_DIR}/figure_gkp_baseline" \
+  --mode gkp \
   --x-col sigma \
   --group-col decoder \
-  --title "Hybrid Decoder Comparison at d=${D_VALUE}" \
-  --xlabel "Sigma (CV displacement std. dev.)" \
+  --title "Native GKP Decoder Comparison at d=${D_VALUE}" \
+  --xlabel "Sigma (GKP displacement std. dev.)" \
   --ylabel "Logical Error Rate (LER)" \
   --style "${REPO_ROOT}/examples/plot_only/publication.mplstyle" \
   --logy
@@ -73,8 +92,7 @@ run_publication_plot "${REPO_ROOT}" \
   --input "${RESULT_DIR}/combined.csv" \
   --x-col sigma \
   --group-cols decoder \
-  --out-md "${RESULT_DIR}/table_hybrid_baseline.md" \
-  --out-csv "${RESULT_DIR}/table_hybrid_baseline.csv"
+  --out-md "${RESULT_DIR}/table_gkp_baseline.md" \
+  --out-csv "${RESULT_DIR}/table_gkp_baseline.csv"
 
 echo "Paper run 02 complete: ${RESULT_DIR}"
-

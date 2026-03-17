@@ -15,20 +15,18 @@ P_START="${LIDMAS_P_START:-0.03}"
 P_END="${LIDMAS_P_END:-0.12}"
 P_STEP="${LIDMAS_P_STEP:-0.01}"
 SEED="${LIDMAS_SEED:-1337}"
+THREADS="${LIDMAS_THREADS:-1}"
 
-declare -a DECODERS=("mwpm" "uf")
-if paper_include_neural; then
-  MODEL_PATH="$(paper_neural_model_path)"
-  if [ -f "${MODEL_PATH}" ]; then
-    DECODERS+=("neural_mwpm")
-  else
-    echo "Warning: neural model not found at ${MODEL_PATH}; skipping neural_mwpm" >&2
-  fi
-fi
+declare -a DECODERS=()
+while IFS= read -r decoder; do
+  DECODERS+=("${decoder}")
+done < <(paper_resolve_decoders)
 
 echo "Running paper baseline experiment 01 (Pauli, fixed distance)..."
 echo "Binary: ${BIN}"
 echo "Trials per point: ${TRIALS}"
+echo "Threads: ${THREADS}"
+echo "Decoders: ${DECODERS[*]}"
 
 MERGE_ARGS=()
 for DECODER in "${DECODERS[@]}"; do
@@ -43,6 +41,7 @@ for DECODER in "${DECODERS[@]}"; do
     --p_step="${P_STEP}"
     --trials="${TRIALS}"
     --seed="${SEED}"
+    --threads="${THREADS}"
     --out="${OUT_CSV}"
   )
   if [ "${DECODER}" = "neural_mwpm" ]; then
@@ -77,4 +76,3 @@ run_publication_plot "${REPO_ROOT}" \
   --out-csv "${RESULT_DIR}/table_pauli_baseline.csv"
 
 echo "Paper run 01 complete: ${RESULT_DIR}"
-
