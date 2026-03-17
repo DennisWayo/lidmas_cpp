@@ -1,0 +1,50 @@
+{
+  "code_id": "gkp_surface_d5",
+  "n_qubits": 40,
+  "round_start": 0,
+  "round_stride": 1,
+  "time_ns_start": 1000,
+  "time_ns_stride": 1000,
+  "metadata": {
+    "hardware": "xanadu",
+    "dataset": "aurora_decoder_demo_signal_batch0",
+    "notes": "Mapping for real Aurora batch_0 qpu_0..qpu_4 switch settings"
+  },
+  "stabilizers": [
+    {
+      "index": 0,
+      "type": "Z",
+      "modes": [0, 1],
+      "mod": 2,
+      "trigger_on": 1
+    },
+    {
+      "index": 1,
+      "type": "Z",
+      "modes": [1, 2],
+      "mod": 2,
+      "trigger_on": 1
+    },
+    {
+      "index": 2,
+      "type": "Z",
+      "modes": [2, 3],
+      "mod": 2,
+      "trigger_on": 1
+    },
+    {
+      "index": 3,
+      "type": "Z",
+      "modes": [3, 4],
+      "mod": 2,
+      "trigger_on": 1
+    },
+    {
+      "index": 4,
+      "type": "Z",
+      "modes": [0, 4],
+      "mod": 2,
+      "trigger_on": 1
+    }
+  ]
+}
