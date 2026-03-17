@@ -32,7 +32,7 @@ lidmas --help
 
 Documentation:
 
-- [GitHub Pages Documentation](https://denniswayo.github.io/lidmas_cpp/)
+- [Lidmas+ Documentation](https://denniswayo.github.io/lidmas_cpp/)
 - Read the Docs mirror is currently unavailable.
 
 ## Statement of Need
