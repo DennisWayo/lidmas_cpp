@@ -27,6 +27,7 @@ LIDMAS_SKIP_PY_DEPS=1 ./examples/hybrid_threshold/run.sh
 - `decoder_comparison/`: same sweep across multiple decoders.
 - `failure_debug/`: stress run and failure-dump capture workflow.
 - `plot_only/`: publication-grade plotting from existing CSV files.
+- `hardware_integration/`: convert Xanadu-style job output JSON to LiDMaS+ decoder IO NDJSON.
 
 
 ## Central Results Folder

@@ -29,6 +29,42 @@ Key fields:
 Each line is one `DecodeRequest` JSON object.
 See `schemas/decoder_io_example.ndjson` for examples.
 
+### Xanadu job conversion helper
+
+Use the built-in converter example to transform Xanadu-style job outputs into
+`DecodeRequest` NDJSON:
+
+```bash
+python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
+  --input /path/to/xanadu_job.json \
+  --mapping /path/to/your_mapping.json \
+  --out examples/results/hardware_integration/decoder_requests.ndjson
+```
+
+Quick demo:
+
+```bash
+bash examples/hardware_integration/run.sh
+```
+
+The mapping file controls how measured modes are converted to syndrome events.
+See `examples/hardware_integration/xanadu_syndrome_mapping_example.json`.
+
+### Replay NDJSON through LiDMaS+ adapter
+
+Use the C++ CLI replay mode to decode each NDJSON `DecodeRequest` line and write
+NDJSON `DecodeResponse` lines:
+
+```bash
+./build/lidmas --decoder_io_replay \
+  --decoder_io_in=examples/results/hardware_integration/decoder_requests.ndjson \
+  --decoder_io_out=examples/results/hardware_integration/decoder_responses.ndjson \
+  --decoder_io_config=schemas/surface_decoder_adapter_config.json \
+  --decoder_io_continue_on_error
+```
+
+Use `--decoder_io_continue_on_error` to keep replaying when one line is malformed.
+
 ## C++ adapter API
 
 Implement the `decoder_io::DecoderAdapter` interface:

@@ -23,6 +23,7 @@
 #include "codes/ShorCode.h"
 #include "core/PluginRegistry.h"
 #include "core/RegisterPlugins.h"
+#include "decoder_io/DecoderIOReplay.h"
 #include "decoders/BPDecoderAdapter.h"
 #include "decoders/BeliefPropagation.h"
 #include "graph/GraphDiagnostics.h"
@@ -472,6 +473,10 @@ void printHelp(const PluginRegistry& plugins) {
               << "                           [--mode=pauli|hybrid]\n"
               << "                           [--min_trials=200 --max_trials=20000 --batch_trials=200]\n"
               << "                           [--target_ci_halfwidth=0.01 --target_rel_ci=0.10]\n"
+              << "  ./lidmas --decoder_io_replay --decoder_io_in=<requests.ndjson>\n"
+              << "                               [--decoder_io_out=<responses.ndjson>]\n"
+              << "                               [--decoder_io_config=schemas/surface_decoder_adapter_config.json]\n"
+              << "                               [--decoder_io_continue_on_error]\n"
               << "  ./lidmas --smoke              Run lightweight surface smoke checks\n"
               << "\n"
               << "Flags\n"
@@ -543,6 +548,11 @@ void printHelp(const PluginRegistry& plugins) {
               << "  --gpu_bench_batch=<N>          Benchmark batch size (default 200)\n"
               << "  --gpu_bench_p=<x>              Benchmark Pauli p (default 0.05)\n"
               << "  --gpu_bench_seed=<uint>        Benchmark seed base (default 1337)\n"
+              << "  --decoder_io_replay           Replay decoder_io NDJSON requests through SurfaceDecoderAdapter\n"
+              << "  --decoder_io_in=<path>        Input NDJSON of DecodeRequest objects\n"
+              << "  --decoder_io_out=<path>       Output NDJSON of DecodeResponse objects (default stdout)\n"
+              << "  --decoder_io_config=<path>    Surface decoder adapter config (JSON/YAML)\n"
+              << "  --decoder_io_continue_on_error Continue replay and emit per-line error responses\n"
               << "  --auto_threshold              Estimate threshold crossings after sweep\n"
               << "  --estimate_threshold          Pairwise crossing estimate of p_c\n"
               << "  --scaling_fit                Finite-size scaling fit for p_c and nu\n"
@@ -1420,6 +1430,7 @@ int main(int argc, char** argv) {
     const bool has_surface_threshold = hasFlag(args, "--surface_threshold");
     const bool has_gpu_bench = hasFlag(args, "--gpu_bench");
     const bool has_css_threshold = hasFlag(args, "--css_threshold");
+    const bool has_decoder_io_replay = hasFlag(args, "--decoder_io_replay");
     const bool has_css_qec_mode = (qec_mode == "css_demo");
     const bool has_surface_qec_mode = isSurfaceQecMode(qec_mode);
 
@@ -1441,6 +1452,32 @@ int main(int argc, char** argv) {
     }
     if (hasFlag(args, "--help") || hasFlag(args, "-h")) {
         printHelp(plugins);
+        return 0;
+    }
+    if (has_decoder_io_replay) {
+        decoder_io::DecoderIOReplayConfig replay_cfg;
+        replay_cfg.input_ndjson = getValuePrefix(args, "--decoder_io_in=");
+        if (replay_cfg.input_ndjson.empty()) {
+            replay_cfg.input_ndjson = getValuePrefix(args, "--decoder_io_input=");
+        }
+        replay_cfg.output_ndjson = getValuePrefix(args, "--decoder_io_out=");
+        if (replay_cfg.output_ndjson.empty()) {
+            replay_cfg.output_ndjson = getValuePrefix(args, "--decoder_io_output=");
+        }
+        replay_cfg.adapter_config_path = getValuePrefix(args, "--decoder_io_config=");
+        if (replay_cfg.adapter_config_path.empty()) {
+            replay_cfg.adapter_config_path = "schemas/surface_decoder_adapter_config.json";
+        }
+        replay_cfg.continue_on_error = hasFlag(args, "--decoder_io_continue_on_error");
+
+        std::string replay_message;
+        if (!decoder_io::runDecoderIOReplay(replay_cfg, plugins, &replay_message)) {
+            std::cerr << "error: " << replay_message << "\n";
+            return 1;
+        }
+        if (!replay_message.empty()) {
+            std::cout << replay_message << "\n";
+        }
         return 0;
     }
     if (!qec_mode.empty() && !has_css_qec_mode && !has_surface_qec_mode) {

@@ -31,6 +31,8 @@ If you built from source only, replace `lidmas` with `./build/lidmas`.
   - Runs threshold sweeps over `pauli` or `hybrid` mode.
 - `lidmas --css_threshold ...`
   - Runs CSS threshold sweeps over `pauli` or `hybrid` mode.
+- `lidmas --decoder_io_replay --decoder_io_in=<requests.ndjson> ...`
+  - Replays decoder IO NDJSON requests through the surface decoder adapter.
 - `lidmas --smoke`
   - Runs lightweight surface smoke checks.
 
@@ -68,6 +70,16 @@ lidmas --engine=css --css_threshold \
 CSS matrix files are dense 0/1 text (space or comma separated). Logical files can include multiple rows.
 
 CSS spec files must define string paths for `hx`, `hz`, `lx`, and `lz` (JSON or YAML key/value).
+
+## Decoder IO replay pattern
+
+```bash
+lidmas --decoder_io_replay \
+  --decoder_io_in=decoder_requests.ndjson \
+  --decoder_io_out=decoder_responses.ndjson \
+  --decoder_io_config=schemas/surface_decoder_adapter_config.json \
+  --decoder_io_continue_on_error
+```
 
 ## Key options
 
@@ -132,6 +144,11 @@ CSS spec files must define string paths for `hx`, `hz`, `lx`, and `lz` (JSON or 
 - `--gpu_bench_batch=<N>`
 - `--gpu_bench_p=<x>`
 - `--gpu_bench_seed=<uint>`
+- `--decoder_io_replay`
+- `--decoder_io_in=<path>`
+- `--decoder_io_out=<path>`
+- `--decoder_io_config=<path>`
+- `--decoder_io_continue_on_error`
 - `--quiet-iter-log`
 - `--help` / `-h`
 

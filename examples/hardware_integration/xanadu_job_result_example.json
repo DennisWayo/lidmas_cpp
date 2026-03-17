@@ -1,0 +1,14 @@
+{
+  "job_id": "x8_sample_001",
+  "target": "X8_01",
+  "output": [
+    [0, 1, 0, 2],
+    [1, 0, 1, 0],
+    [0, 0, 0, 0],
+    [2, 1, 1, 1]
+  ],
+  "metadata": {
+    "provider": "xanadu",
+    "backend": "X8_01"
+  }
+}

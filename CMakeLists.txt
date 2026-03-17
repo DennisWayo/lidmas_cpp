@@ -29,12 +29,14 @@ add_executable(lidmas
         include/core/RegisterDecoders.h
         include/core/RegisterPlugins.h
         include/decoder_io/DecoderAdapter.h
+        include/decoder_io/DecoderIOReplay.h
         include/decoder_io/DecoderTypes.h
         include/decoder_io/SurfaceDecoderAdapter.h
         include/decoder_io/SurfaceDecoderConfigIO.h
         include/decoders/IDecoder.h
         include/decoders/BPDecoderAdapter.h
         src/decoder_io/SurfaceDecoderAdapter.cpp
+        src/decoder_io/DecoderIOReplay.cpp
         src/decoder_io/SurfaceDecoderConfigIO.cpp
         src/utils/Channel.cpp
         src/utils/BSCChannel.cpp

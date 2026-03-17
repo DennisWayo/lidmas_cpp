@@ -234,6 +234,21 @@ For quick validation in local or CI environments:
 See [hardware-integration](https://denniswayo.github.io/lidmas_cpp/hardware-integration/) for the decoder IO schema,
 recommended data transport, and adapter API.
 
+Xanadu-style job conversion example:
+
+```bash
+bash examples/hardware_integration/run.sh
+```
+
+Replay converted NDJSON through the C++ adapter:
+
+```bash
+./build/lidmas --decoder_io_replay \
+  --decoder_io_in=examples/results/hardware_integration/decoder_requests.ndjson \
+  --decoder_io_out=examples/results/hardware_integration/decoder_responses.ndjson \
+  --decoder_io_continue_on_error
+```
+
 ## Project Layout
 
 ```text
