@@ -7,8 +7,14 @@ source "${REPO_ROOT}/examples/common.sh"
 
 BIN="$(resolve_lidmas_binary "${REPO_ROOT}")"
 RESULT_DIR="$(results_dir_for "${REPO_ROOT}" "hardware_integration")"
-REQ="${RESULT_DIR}/decoder_requests.ndjson"
-RESP="${RESULT_DIR}/decoder_responses.ndjson"
+REQ="${1:-${RESULT_DIR}/decoder_requests.ndjson}"
+if [ "${#}" -ge 2 ]; then
+  RESP="${2}"
+else
+  BASE_REQ="$(basename "${REQ}")"
+  BASE_RESP="${BASE_REQ/requests/responses}"
+  RESP="${RESULT_DIR}/${BASE_RESP}"
+fi
 CFG="${REPO_ROOT}/schemas/surface_decoder_adapter_config.json"
 
 if [ ! -f "${REQ}" ]; then
