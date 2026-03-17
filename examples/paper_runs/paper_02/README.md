@@ -1,6 +1,10 @@
 # paper_02 Workflow README
 
 This directory contains the reproducible run scripts used for `paper_02`.
+Manuscript title:
+
+- `Decoder Dependence in Surface-Code Threshold Estimation with Native Gottesman-Kitaev-Preskill Digitization and Parallelized Sampling`
+
 The workflow first appears in release `v1.1.0` and lives under:
 
 - `examples/paper_runs/paper_02/`
