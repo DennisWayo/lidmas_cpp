@@ -16,34 +16,47 @@ P_END="${LIDMAS_P_END:-0.12}"
 P_STEP="${LIDMAS_P_STEP:-0.01}"
 BOOTSTRAP="${LIDMAS_SCALING_BOOTSTRAP:-200}"
 SEED="${LIDMAS_SEED:-1337}"
+THREADS="${LIDMAS_THREADS:-1}"
 
-declare -a DECODERS=("mwpm" "uf")
+declare -a DECODERS=()
+while IFS= read -r decoder; do
+  DECODERS+=("${decoder}")
+done < <(paper_resolve_decoders)
 
 echo "Running paper experiment 04 (Pauli threshold/scaling)..."
 echo "Distances: ${DISTANCES}"
 echo "Trials per point: ${TRIALS}"
+echo "Threads: ${THREADS}"
+echo "Decoders: ${DECODERS[*]}"
 
 SUMMARY_ARGS=()
 for DECODER in "${DECODERS[@]}"; do
   OUT_CSV="${RESULT_DIR}/results_${DECODER}.csv"
   OUT_MD="${RESULT_DIR}/scaling_report_${DECODER}.md"
   OUT_JSON="${RESULT_DIR}/scaling_summary_${DECODER}.json"
-  echo "  -> ${DECODER}"
-  "${BIN}" --surface_threshold \
-    --mode=pauli \
-    --decoder="${DECODER}" \
-    --d="${DISTANCES}" \
-    --p_start="${P_START}" \
-    --p_end="${P_END}" \
-    --p_step="${P_STEP}" \
-    --trials="${TRIALS}" \
-    --seed="${SEED}" \
-    --estimate_threshold \
-    --scaling_fit \
-    --scaling_bootstrap="${BOOTSTRAP}" \
-    --scaling_report="${OUT_MD}" \
-    --scaling_json="${OUT_JSON}" \
+  CMD=(
+    "${BIN}" --surface_threshold
+    --mode=pauli
+    --decoder="${DECODER}"
+    --d="${DISTANCES}"
+    --p_start="${P_START}"
+    --p_end="${P_END}"
+    --p_step="${P_STEP}"
+    --trials="${TRIALS}"
+    --seed="${SEED}"
+    --threads="${THREADS}"
+    --estimate_threshold
+    --scaling_fit
+    --scaling_bootstrap="${BOOTSTRAP}"
+    --scaling_report="${OUT_MD}"
+    --scaling_json="${OUT_JSON}"
     --out="${OUT_CSV}"
+  )
+  if [ "${DECODER}" = "neural_mwpm" ]; then
+    CMD+=(--neural_model="$(paper_neural_model_path)")
+  fi
+  echo "  -> ${DECODER}"
+  "${CMD[@]}"
 
   run_publication_plot "${REPO_ROOT}" \
     --input "${OUT_CSV}" \
@@ -67,4 +80,3 @@ done
   --out-csv "${RESULT_DIR}/table_pauli_threshold_summary.csv"
 
 echo "Paper run 04 complete: ${RESULT_DIR}"
-
