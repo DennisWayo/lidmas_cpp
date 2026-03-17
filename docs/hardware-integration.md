@@ -6,6 +6,9 @@ LiDMaS+ supports three data ingestion modes for hardware integration:
 2. File batch (NDJSON)
 3. In-process C++ adapter API
 
+Provider-specific examples live under `hardware_integration/<provider>/`.
+Current provider implementation: `hardware_integration/xanadu/`.
+
 ## Recommended default
 
 - Use **sparse time-stamped syndrome events** by default.
@@ -47,7 +50,7 @@ Supported source modes:
 Legacy job JSON:
 
 ```bash
-python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
+python3 hardware_integration/xanadu/convert_xanadu_job_to_decoder_io.py \
   --source-format xanadu_job_json \
   --input /path/to/xanadu_job.json \
   --mapping /path/to/your_mapping.json \
@@ -57,13 +60,25 @@ python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
 Quick demo:
 
 ```bash
-bash examples/hardware_integration/run.sh
+bash hardware_integration/xanadu/run.sh
 ```
 
 Aurora / QCA / GKP fixture demos:
 
 ```bash
-bash examples/hardware_integration/run_public_datasets.sh
+bash hardware_integration/xanadu/run_public_datasets.sh
+```
+
+One-command real-data slices (download + convert + replay):
+
+```bash
+bash hardware_integration/xanadu/xandau_hardware_data.sh --install-deps
+
+# QCA fig3b
+bash hardware_integration/xanadu/xandau_hardware_data.sh \
+  --dataset qca_fig3b \
+  --max-shots 200000 \
+  --install-deps
 ```
 
 Real Aurora decoder-demo batch:
@@ -71,11 +86,11 @@ Real Aurora decoder-demo batch:
 ```bash
 python3 -m pip install numpy
 
-python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
+python3 hardware_integration/xanadu/convert_xanadu_job_to_decoder_io.py \
   --source-format aurora_switch_dir \
   --stream \
   --input /path/to/decoder_demo/signal/batch_0 \
-  --mapping examples/hardware_integration/xanadu_aurora_mapping_example.json \
+  --mapping hardware_integration/xanadu/xanadu_aurora_mapping_example.json \
   --out examples/results/hardware_integration/decoder_requests_aurora.ndjson \
   --aurora-binarize \
   --max-shots 20000 \
@@ -85,11 +100,11 @@ python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
 Real QCA sample matrix:
 
 ```bash
-python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
+python3 hardware_integration/xanadu/convert_xanadu_job_to_decoder_io.py \
   --source-format shot_matrix \
   --stream \
   --input /path/to/fig3a/samples.npy \
-  --mapping examples/hardware_integration/xanadu_qca_mapping_example.json \
+  --mapping hardware_integration/xanadu/xanadu_qca_mapping_example.json \
   --out examples/results/hardware_integration/decoder_requests_qca.ndjson \
   --max-shots 50000 \
   --progress-every 10000
@@ -98,20 +113,20 @@ python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
 Chunk large QCA files by repeating conversion with shifted `--shot-start` and `--append-out`:
 
 ```bash
-python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
+python3 hardware_integration/xanadu/convert_xanadu_job_to_decoder_io.py \
   --source-format shot_matrix \
   --stream \
   --input /path/to/fig3a/samples.npy \
-  --mapping examples/hardware_integration/xanadu_qca_mapping_example.json \
+  --mapping hardware_integration/xanadu/xanadu_qca_mapping_example.json \
   --out examples/results/hardware_integration/decoder_requests_qca.ndjson \
   --shot-start 0 \
   --max-shots 200000
 
-python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
+python3 hardware_integration/xanadu/convert_xanadu_job_to_decoder_io.py \
   --source-format shot_matrix \
   --stream \
   --input /path/to/fig3a/samples.npy \
-  --mapping examples/hardware_integration/xanadu_qca_mapping_example.json \
+  --mapping hardware_integration/xanadu/xanadu_qca_mapping_example.json \
   --out examples/results/hardware_integration/decoder_requests_qca.ndjson \
   --append-out \
   --shot-start 200000 \
@@ -121,15 +136,15 @@ python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
 Count-compressed GKP outcomes:
 
 ```bash
-python3 examples/hardware_integration/convert_xanadu_job_to_decoder_io.py \
+python3 hardware_integration/xanadu/convert_xanadu_job_to_decoder_io.py \
   --source-format count_table_json \
   --input /path/to/gkp_outcome_counts.json \
-  --mapping examples/hardware_integration/xanadu_gkp_mapping_example.json \
+  --mapping hardware_integration/xanadu/xanadu_gkp_mapping_example.json \
   --out examples/results/hardware_integration/decoder_requests_gkp.ndjson
 ```
 
 The mapping file controls how measured modes are converted to syndrome events.
-See `examples/hardware_integration/xanadu_syndrome_mapping_example.json`.
+See `hardware_integration/xanadu/xanadu_syndrome_mapping_example.json`.
 
 Large-data controls:
 

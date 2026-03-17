@@ -237,13 +237,19 @@ recommended data transport, and adapter API.
 Xanadu-style job conversion example:
 
 ```bash
-bash examples/hardware_integration/run.sh
+bash hardware_integration/xanadu/run.sh
 ```
 
 Aurora/QCA/GKP fixture conversions:
 
 ```bash
-bash examples/hardware_integration/run_public_datasets.sh
+bash hardware_integration/xanadu/run_public_datasets.sh
+```
+
+One-command real-data slice (download + convert + replay):
+
+```bash
+bash hardware_integration/xanadu/xandau_hardware_data.sh --install-deps
 ```
 
 For large real datasets, use converter streaming/chunk flags:
@@ -264,6 +270,7 @@ Replay converted NDJSON through the C++ adapter:
 include/   # public headers and interfaces
 src/       # simulator and decoder implementations
 examples/  # reproducible runs and plotting scripts
+hardware_integration/ # provider-oriented hardware data ingestion
 ```
 
 ## Release Notes
