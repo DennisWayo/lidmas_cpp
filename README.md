@@ -240,6 +240,15 @@ Xanadu-style job conversion example:
 bash examples/hardware_integration/run.sh
 ```
 
+Aurora/QCA/GKP fixture conversions:
+
+```bash
+bash examples/hardware_integration/run_public_datasets.sh
+```
+
+For large real datasets, use converter streaming/chunk flags:
+`--stream --shot-start <N> --max-shots <K> [--append-out]`.
+
 Replay converted NDJSON through the C++ adapter:
 
 ```bash
