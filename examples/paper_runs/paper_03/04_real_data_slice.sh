@@ -49,8 +49,12 @@ IFS=',' read -r -a DATASET_LIST <<< "${DATASETS}"
 for dataset in "${DATASET_LIST[@]}"; do
   dataset="${dataset//[[:space:]]/}"
   [ -z "${dataset}" ] && continue
+  if ! fetch_dataset="$(paper_real_dataset_fetch_name "${dataset}")"; then
+    echo "Warning: unsupported dataset label '${dataset}', skipping." >&2
+    continue
+  fi
   args=(
-    --dataset "${dataset}"
+    --dataset "${fetch_dataset}"
     --max-shots "${MAX_SHOTS}"
     --progress-every "${PROGRESS_EVERY}"
     --skip-replay
@@ -60,20 +64,11 @@ for dataset in "${DATASET_LIST[@]}"; do
   fi
   bash "${FETCH_SCRIPT}" "${args[@]}"
 
-  case "${dataset}" in
-    aurora_min)
-      src_req="${REPO_ROOT}/examples/results/hardware_integration/decoder_requests_aurora_batch0_qpu5.ndjson"
-      req_name="decoder_requests_aurora_batch0_qpu5.ndjson"
-      ;;
-    qca_fig3b)
-      src_req="${REPO_ROOT}/examples/results/hardware_integration/decoder_requests_qca_fig3b.ndjson"
-      req_name="decoder_requests_qca_fig3b.ndjson"
-      ;;
-    *)
-      echo "Warning: unsupported dataset label '${dataset}', skipping copy/replay." >&2
-      continue
-      ;;
-  esac
+  if ! src_req="$(paper_real_dataset_request_path "${dataset}")"; then
+    echo "Warning: unsupported dataset label '${dataset}', skipping copy/replay." >&2
+    continue
+  fi
+  req_name="$(basename "${src_req}")"
 
   if [ ! -f "${src_req}" ]; then
     echo "Error: expected request file not found after download: ${src_req}" >&2

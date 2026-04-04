@@ -78,6 +78,43 @@ paper_dataset_label_from_request_path() {
   echo "${base}"
 }
 
+paper_real_dataset_fetch_name() {
+  local dataset="${1:-}"
+  case "${dataset}" in
+    aurora_min|aurora_batch0|aurora_full|aurora_batch0_full)
+      echo "aurora_min"
+      ;;
+    qca_fig3b|qca_fig3b_full)
+      echo "qca_fig3b"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+paper_real_dataset_request_basename() {
+  local dataset="${1:-}"
+  case "${dataset}" in
+    aurora_min|aurora_batch0|aurora_full|aurora_batch0_full)
+      echo "decoder_requests_aurora_batch0_qpu5.ndjson"
+      ;;
+    qca_fig3b|qca_fig3b_full)
+      echo "decoder_requests_qca_fig3b.ndjson"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+paper_real_dataset_request_path() {
+  local dataset="${1:-}"
+  local base
+  base="$(paper_real_dataset_request_basename "${dataset}")" || return 1
+  echo "${REPO_ROOT}/examples/results/hardware_integration/${base}"
+}
+
 paper_prepare_plot_env() {
   local cache_root="${REPO_ROOT}/.cache"
   local home_root="${cache_root}/home"

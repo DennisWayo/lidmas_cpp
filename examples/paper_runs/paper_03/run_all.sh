@@ -12,10 +12,19 @@ if [ "${LIDMAS_RUN_REAL_DATA:-0}" = "1" ]; then
   "${SCRIPT_DIR}/05_analyze_real_data_slice.sh"
 fi
 
+if [ "${LIDMAS_RUN_REAL_DATA_FULL:-0}" = "1" ]; then
+  "${SCRIPT_DIR}/11_real_data_full_hpc.sh"
+  "${SCRIPT_DIR}/12_analyze_real_data_full_hpc.sh"
+fi
+
 "${SCRIPT_DIR}/07_generate_figures.sh"
 
 if [ "${LIDMAS_SYNC_PAPER_03_TEX:-1}" = "1" ] && [ -f "${SCRIPT_DIR}/../../../paper_03.tex" ]; then
   "${SCRIPT_DIR}/06_sync_tables_to_tex.sh"
+fi
+
+if [ "${LIDMAS_RUN_QUALITY:-0}" = "1" ]; then
+  "${SCRIPT_DIR}/10_analyze_quality_metrics.sh"
 fi
 
 echo "paper_03 workflow complete."

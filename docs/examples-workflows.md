@@ -49,4 +49,3 @@ LIDMAS_TRIALS=200 ./examples/hybrid_threshold/run.sh
 ```bash
 bash examples/quick_smoke/run.sh
 ```
-

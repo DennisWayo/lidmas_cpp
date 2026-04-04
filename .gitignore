@@ -75,3 +75,14 @@ examples/paper_runs/paper_*/results/
 # Local manuscript/support files kept out of VCS
 lidmas.bib
 live demo
+us-patent/
+
+# Local PhD proposal workspace
+phd_tubaf/
+
+# Local slide/PPT workspace artifacts
+.venv_ppt/
+*_talk.pptx
+
+# Rust backend build artifacts
+lidmas+/target/

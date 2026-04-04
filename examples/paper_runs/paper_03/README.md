@@ -54,6 +54,15 @@ Run fixture + real-data slice workflow (`01` to `05`):
 LIDMAS_RUN_REAL_DATA=1 ./examples/paper_runs/paper_03/run_all.sh
 ```
 
+Run full-data HPC workflow (separate from paper slice tables):
+
+```bash
+LIDMAS_RUN_REAL_DATA_FULL=1 \
+LIDMAS_HW_MAX_SHOTS=0 \
+LIDMAS_HW_PROGRESS_EVERY=50000 \
+./examples/paper_runs/paper_03/run_all.sh
+```
+
 ## Script Map
 
 - `01_prepare_fixture_requests.sh`
@@ -78,6 +87,26 @@ LIDMAS_RUN_REAL_DATA=1 ./examples/paper_runs/paper_03/run_all.sh
 - `07_generate_figures.sh`
   - Purpose: generate publication-style decoder profile and warning-rate figures from fixture/real-data decoder matrix summaries.
   - Outputs: `results/07_figures/figure_fixture_avg_flip_profile.*`, `figure_fixture_avg_flip_heatmap.*`, `figure_real_avg_flip_profile.*`, `figure_fixture_warning_rate_bar.*`, `figure_real_warning_rate_bar.*`
+- `08_run_extended_analysis.sh`
+  - Purpose: generate extended journal-grade figure pack (A--H), derived metric tables, determinism hash checks, and markdown figure summary for hardware-to-decoder analysis.
+  - Module: `08_extended_analysis/` (`loader.py`, `metrics.py`, `plotting.py`, `run_extended_analysis.py`)
+  - Outputs: `results/08_extended_analysis/figures/*`, `results/08_extended_analysis/tables/*`, `results/08_extended_analysis/logs/*`, `results/08_extended_analysis/extended_analysis_summary.md`
+- `08_prepare_synthetic_holdout.sh`
+  - Purpose: generate non-photonic synthetic requests matched to real-slice syndrome sparsity (train + heldout splits).
+  - Outputs: `results/08_synthetic_matched_sparsity/decoder_requests_synth_*_{train,heldout}.ndjson`, per-dataset summary JSON, manifest CSV
+  - Note: matching is approximate (optimized against reference average-event and nonempty-event rates); exact achieved values are recorded in each `summary_synth_*.json`.
+- `09_replay_synthetic_holdout.sh`
+  - Purpose: replay decoder matrix on synthetic heldout slices.
+  - Outputs: `results/09_replay_synthetic_holdout/decoder_responses_synth_*_heldout_<decoder>.ndjson`, replay manifest
+- `10_analyze_quality_metrics.sh`
+  - Purpose: compute residual-syndrome quality metrics on fixture/real/synthetic heldout runs and logical-failure rates where ground-truth labels exist (synthetic heldout via `metadata.true_ex_indices` / `metadata.true_ez_indices`).
+  - Outputs: `results/10_quality_metrics/table_fixture_quality.*`, optional `table_real_quality.*`, optional `table_synthetic_heldout_quality.*`
+- `11_real_data_full_hpc.sh`
+  - Purpose: run full-data replay on public Xanadu datasets for HPC-scale experiments (no shot slicing by default).
+  - Outputs: `results/11_real_data_full_hpc/decoder_requests_*.ndjson`, `decoder_responses_*_*.ndjson`, replay manifest
+- `12_analyze_real_data_full_hpc.sh`
+  - Purpose: summarize full-data HPC replay matrix and residual quality metrics.
+  - Outputs: `results/12_real_data_full_analysis/table_full_data_decoder_matrix.*`, `table_full_data_quality.*`
 
 ## Manuscript Mapping (`paper_03.tex`)
 
@@ -97,6 +126,12 @@ Use the following mapping when drafting figures/tables in `paper_03.tex`.
     - `results/03_decoder_matrix_analysis/table_decoder_matrix.md`
   - LaTeX label: `\label{tab:decoder_matrix_fixture}`
   - Candidate figure source for `\label{fig:warning_rate_profiles}`, `\label{fig:avg_flip_profiles}`, and `\label{fig:fixture_avg_flip_heatmap}` via `07_generate_figures.sh`
+- `10_analyze_quality_metrics.sh`
+  - Supports: decoder-quality and ablation reporting text (residual syndrome satisfaction and heldout logical-failure comparison)
+  - Candidate paper tables:
+    - `results/10_quality_metrics/table_fixture_quality.csv`
+    - `results/10_quality_metrics/table_real_quality.csv` (if real slice run exists)
+    - `results/10_quality_metrics/table_synthetic_heldout_quality.csv` (when synthetic ablation is enabled)
 - `04_real_data_slice.sh` (optional)
   - Supports: `\section{Xanadu Integration Case Study}` and real public-data validation text
   - Candidate raw data: `results/04_real_data_slice/decoder_requests_*.ndjson` and `decoder_responses_*_*.ndjson`
@@ -151,6 +186,56 @@ LIDMAS_DECODERS=mwpm,uf \
 ./examples/paper_runs/paper_03/run_all.sh
 ```
 
+## Full-Data HPC Controls
+
+Used by `11_real_data_full_hpc.sh`:
+
+- `LIDMAS_RUN_REAL_DATA_FULL=1` enable full-data run from `run_all.sh`
+- `LIDMAS_HW_DATASETS` default: `aurora_full,qca_fig3b_full`
+- `LIDMAS_HW_MAX_SHOTS` default: `0` (convert all available shots)
+- `LIDMAS_HW_PROGRESS_EVERY` default: `50000`
+- `LIDMAS_HW_FORCE_DOWNLOAD=1` force re-download and reconversion
+- `LIDMAS_HW_REUSE_REQUESTS=1` reuse existing converted request NDJSON when present
+- `LIDMAS_HW_REQUESTS_DIR=/path/to/requests` use pre-generated request files instead of downloader
+- `LIDMAS_HW_LINK_REQUESTS=1` symlink request files into run directory (set `0` to copy)
+- `LIDMAS_FULL_RUN_NAME` default: `11_real_data_full_hpc`
+- `LIDMAS_FULL_ANALYSIS_NAME` default: `12_real_data_full_analysis`
+
+Example:
+
+```bash
+LIDMAS_RUN_REAL_DATA_FULL=1 \
+LIDMAS_HW_MAX_SHOTS=0 \
+LIDMAS_DECODERS=mwpm,uf,bp,neural_mwpm \
+./examples/paper_runs/paper_03/run_all.sh
+```
+
+For patent-track work, keep these full-data outputs separate from public paper assets and avoid syncing them into `paper_03.tex`.
+
+## Quality And Ablation
+
+Run quality metrics (residual syndrome satisfaction) after core workflow:
+
+```bash
+LIDMAS_RUN_QUALITY=1 ./examples/paper_runs/paper_03/run_all.sh
+```
+
+Run synthetic matched-sparsity heldout ablation with logical-failure metrics:
+
+```bash
+LIDMAS_RUN_QUALITY=1 \
+LIDMAS_RUN_SYNTH_ABLATION=1 \
+LIDMAS_RUN_REAL_DATA=1 \
+./examples/paper_runs/paper_03/run_all.sh
+```
+
+Optional controls:
+
+- `LIDMAS_SYNTH_TRAIN_SHOTS` (default: `1000`)
+- `LIDMAS_SYNTH_HELDOUT_SHOTS` (default: `500`)
+- `LIDMAS_SYNTH_SEED` (default: `12345`)
+- `LIDMAS_SYNTH_DISTANCE` (default: `5`)
+
 ## Release Context
 
 This workflow targets LiDMaS+ `v1.2.0` and later hardware-integration layout:
@@ -177,4 +262,16 @@ Generate/update figures explicitly:
 
 ```bash
 ./examples/paper_runs/paper_03/07_generate_figures.sh
+```
+
+Run extended analysis figure pack explicitly:
+
+```bash
+./examples/paper_runs/paper_03/08_run_extended_analysis.sh
+```
+
+Optional SVG export:
+
+```bash
+./examples/paper_runs/paper_03/08_run_extended_analysis.sh --export-svg
 ```

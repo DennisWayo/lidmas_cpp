@@ -81,6 +81,30 @@ bash hardware_integration/xanadu/xandau_hardware_data.sh \
   --install-deps
 ```
 
+Full-data conversion (HPC recommended):
+
+```bash
+bash hardware_integration/xanadu/xandau_hardware_data.sh \
+  --dataset aurora_full \
+  --max-shots 0 \
+  --progress-every 50000 \
+  --install-deps
+```
+
+GKP full-data conversion:
+
+```bash
+bash hardware_integration/xanadu/xandau_hardware_data.sh \
+  --dataset gkp_full \
+  --max-shots 0 \
+  --progress-every 50000 \
+  --install-deps
+```
+
+By default, `gkp_full` uses compact count-table conversion (`metadata.repeat_count`)
+to prevent multi-hundred-GB expanded NDJSON files. Set `LIDMAS_GKP_FULL_EXPAND=1`
+only if you explicitly need one request row per shot.
+
 Real Aurora decoder-demo batch:
 
 ```bash

@@ -380,6 +380,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Extra metadata key=value (repeatable).",
     )
+    p.add_argument(
+        "--count-table-no-expand",
+        action="store_true",
+        help=(
+            "In count_table_json mode, emit one request per table row and store "
+            "the expanded multiplicity in metadata.repeat_count instead of fully expanding counts."
+        ),
+    )
     return p
 
 
@@ -441,7 +449,7 @@ def _iter_job_shots(payload: Any, shot_start: int, max_shots: int):
     start = min(shot_start, total)
     end = total if max_shots <= 0 else min(total, start + max_shots)
     for idx in range(start, end):
-        yield idx, shots[idx]
+        yield idx, shots[idx], 1
 
 
 def _iter_shot_matrix(payload: Any, array_key: str, shot_start: int, max_shots: int):
@@ -452,7 +460,7 @@ def _iter_shot_matrix(payload: Any, array_key: str, shot_start: int, max_shots: 
         start = min(shot_start, total)
         end = total if max_shots <= 0 else min(total, start + max_shots)
         for idx in range(start, end):
-            yield idx, data[idx]
+            yield idx, data[idx], 1
         return
 
     if hasattr(data, "ndim") and hasattr(data, "shape"):
@@ -464,15 +472,15 @@ def _iter_shot_matrix(payload: Any, array_key: str, shot_start: int, max_shots: 
         end = total if max_shots <= 0 else min(total, start + max_shots)
         for idx in range(start, end):
             if ndim == 1:
-                yield idx, data
+                yield idx, data, 1
             else:
-                yield idx, data[idx]
+                yield idx, data[idx], 1
         return
 
     raise ValueError(f"Unsupported shot_matrix container type: {type(data).__name__}")
 
 
-def _iter_count_table(payload: Any, shot_start: int, max_shots: int):
+def _iter_count_table(payload: Any, shot_start: int, max_shots: int, expand_counts: bool):
     table = payload
     if isinstance(payload, dict):
         table = payload.get("counts", payload.get("histogram", payload.get("entries")))
@@ -515,8 +523,14 @@ def _iter_count_table(payload: Any, shot_start: int, max_shots: int):
             continue
 
         shot_norm = _normalize_shot(shot_raw, i)
-        for global_idx in range(take_start, take_end):
-            yield global_idx, shot_norm
+        if expand_counts:
+            for global_idx in range(take_start, take_end):
+                yield global_idx, shot_norm, 1
+        else:
+            repeat_count = take_end - take_start
+            if repeat_count > 0:
+                # Preserve expanded index semantics by using the first expanded index.
+                yield take_start, shot_norm, repeat_count
 
         if target_end is not None and expanded_cursor >= target_end:
             return
@@ -569,7 +583,7 @@ def _iter_aurora_switch_dir(
         for col in columns:
             v = col.value(idx)
             shot.append(0 if (binarize and v == 0) else (1 if binarize else v))
-        yield idx, shot
+        yield idx, shot, 1
 
 
 def _compile_stabilizers(stabilizers: Any) -> list[tuple[int, str, list[int], int, int, int]]:
@@ -618,7 +632,12 @@ def _iter_source_shots(args: argparse.Namespace, input_path: Path, source_format
         return
 
     if source_format == "count_table_json":
-        yield from _iter_count_table(payload, shot_start=shot_start, max_shots=max_shots)
+        yield from _iter_count_table(
+            payload,
+            shot_start=shot_start,
+            max_shots=max_shots,
+            expand_counts=not args.count_table_no_expand,
+        )
         return
 
     raise ValueError(f"Unsupported source format: {source_format}")
@@ -691,8 +710,10 @@ def main() -> int:
     out_mode = "a" if args.append_out else "w"
 
     wrote = 0
+    expanded_wrote = 0
+    next_progress = args.progress_every if args.progress_every > 0 else 0
     with out_path.open(out_mode, encoding="utf-8") as f:
-        for global_idx, shot_raw in _iter_source_shots(args, in_path, source_format, payload):
+        for global_idx, shot_raw, repeat_count in _iter_source_shots(args, in_path, source_format, payload):
             shot = _normalize_shot(shot_raw, global_idx)
             events: list[dict[str, Any]] = []
             shot_time = time_ns_start + global_idx * time_ns_stride
@@ -730,13 +751,24 @@ def main() -> int:
                 "metadata": dict(base_meta),
             }
             req["metadata"]["shot_index"] = str(global_idx)
+            if repeat_count > 1:
+                req["metadata"]["repeat_count"] = str(repeat_count)
             f.write(json.dumps(req, separators=(",", ":")) + "\n")
             wrote += 1
+            expanded_wrote += repeat_count
 
-            if args.progress_every > 0 and wrote % args.progress_every == 0:
-                print(f"progress: wrote={wrote} latest_shot_index={global_idx}", file=sys.stderr)
+            if args.progress_every > 0 and expanded_wrote >= next_progress:
+                while next_progress <= expanded_wrote:
+                    next_progress += args.progress_every
+                print(f"progress: wrote={expanded_wrote} latest_shot_index={global_idx}", file=sys.stderr)
 
-    print(f"Wrote {wrote} DecodeRequest lines to {out_path}")
+    if wrote == expanded_wrote:
+        print(f"Wrote {wrote} DecodeRequest lines to {out_path}")
+    else:
+        print(
+            f"Wrote {wrote} DecodeRequest lines to {out_path} "
+            f"(expanded_shots={expanded_wrote})"
+        )
     return 0
 
 
