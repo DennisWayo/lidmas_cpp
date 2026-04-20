@@ -86,3 +86,12 @@ phd_tubaf/
 
 # Rust backend build artifacts
 lidmas+/target/
+
+# LiDMaS+ frontend build/deps artifacts
+lidmas+/frontend/node_modules/
+lidmas+/frontend/dist/
+lidmas+/frontend/*.tsbuildinfo
+
+# LiDMaS+ design exports (generated)
+lidmas+/design/*.png
+lidmas+/design/*.pdf

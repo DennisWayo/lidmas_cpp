@@ -13,10 +13,11 @@
 
 **Logical Injection & Decoding Modeling System**
 
-LiDMaS+ is a C++ research simulator for quantum error-correction studies, with
-surface-code threshold experiments under discrete Pauli noise and hybrid
-continuous-variable (CV)-discrete noise models as the primary workflow. It also
-includes CSS and LDPC engine paths for comparative studies.
+LiDMaS+ is a C++ research platform for quantum error-correction studies,
+covering surface-code threshold analysis, hybrid CV-DV (including digitized GKP)
+noise modeling, and hardware-to-decoder replay benchmarking under a common
+decoder IO contract. It also includes CSS and LDPC engine paths for comparative
+studies and supports cross-stack decoder comparability workflows.
 
 Install from PyPI:
 
@@ -197,7 +198,8 @@ LDPC engine (default):
 ## Reproducible Examples
 
 The `examples/` directory contains ready-to-run scripts for smoke checks,
-Pauli/hybrid thresholds, scaling workflows, decoder comparison, and plotting.
+Pauli/hybrid/GKP thresholds, hardware-integration replay, stack-comparison
+benchmarking, scaling workflows, and plotting.
 
 Setup once:
 
@@ -283,19 +285,19 @@ GitHub Releases.
 If you use LiDMaS+ in academic work, cite the software release used for your
 experiments (tag + commit hash). 
 
-Paper reference (`paper_01`):
+Paper reference (`paper_03`):
 
-![paper_01 graphic](docs/images/paper_01_graphic.png)
+![paper_03 graphic](docs/images/paper_03_graphic.png)
 
 ```bibtex
-@misc{wayo2026decoder,
-  title={Decoder Performance in Hybrid CV-Discrete Surface-Code Threshold Estimation Using LiDMaS+},
-  author={Dennis Delali Kwesi Wayo and Chinonso Onah and Vladimir Milchakov and Leonardo Goliatt and Sven Groppe},
+@misc{wayo2026unifiedhardwaretodecoderarchitecturehybrid,
+  title={A Unified Hardware-to-Decoder Architecture for Hybrid Continuous-Variable and Discrete-Variable Quantum Error Correction in LiDMaS+},
+  author={Dennis Delali Kwesi Wayo and Chinonso Onah and Leonardo Goliatt and Sven Groppe},
   year={2026},
-  eprint={2603.06730},
+  eprint={2604.15389},
   archivePrefix={arXiv},
   primaryClass={quant-ph},
-  url={https://arxiv.org/abs/2603.06730}
+  url={https://arxiv.org/abs/2604.15389}
 }
 ```
 

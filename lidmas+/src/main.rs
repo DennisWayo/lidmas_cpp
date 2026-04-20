@@ -6,6 +6,7 @@ mod state;
 use std::net::SocketAddr;
 
 use tower_http::trace::TraceLayer;
+use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::state::AppState;
@@ -21,7 +22,14 @@ async fn main() {
         .init();
 
     let state = AppState::new();
-    let app = routes::router(state.clone()).layer(TraceLayer::new_for_http());
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let app = routes::router(state.clone())
+        .layer(cors)
+        .layer(TraceLayer::new_for_http());
 
     let addr: SocketAddr = std::env::var("LIDMAS_BACKEND_ADDR")
         .ok()
