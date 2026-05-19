@@ -245,15 +245,92 @@ def _build_telemetry_payload(
     syndrome_samples: list[dict[str, Any]],
     decoder_exact_metrics: list[dict[str, Any]],
     decoder_interventions: list[dict[str, Any]],
+    decoder_name: str | None,
+    expanded_shot_count: int | None,
 ) -> dict[str, Any]:
+    request_line_count = len(noise_samples)
+    response_line_count = request_line_count
+    response_ratio = (
+        response_line_count / request_line_count if request_line_count > 0 else None
+    )
     stabilizer_count = len({sample["stabilizer"] for sample in syndrome_samples})
     rounds = max((int(sample["round"]) for sample in syndrome_samples), default=-1) + 1
-    request_count = max(len(noise_samples), rounds) * max(1, stabilizer_count)
+    syndrome_opportunities = request_line_count * max(1, stabilizer_count)
+    physical_error_events = sum(
+        1 for sample in syndrome_samples if sample.get("is_triggered") or int(sample.get("value", 0)) != 0
+    )
+    physical_error_opportunities = syndrome_opportunities
+    physical_error_rate = (
+        physical_error_events / physical_error_opportunities
+        if physical_error_opportunities > 0
+        else None
+    )
+
+    primary_exact = None
+    normalized_decoder = (decoder_name or "").strip().lower()
+    for metric in decoder_exact_metrics:
+        metric_decoder = str(metric.get("decoder", "")).strip().lower()
+        if normalized_decoder and metric_decoder == normalized_decoder:
+            primary_exact = metric
+            break
+    if primary_exact is None and decoder_exact_metrics:
+        primary_exact = decoder_exact_metrics[0]
+
+    logical_failures = int(primary_exact.get("logical_failures", 0)) if primary_exact else None
+    logical_trials = int(primary_exact.get("trials", 0)) if primary_exact else None
+    logical_error_rate = (
+        (logical_failures / logical_trials)
+        if logical_failures is not None and logical_trials is not None and logical_trials > 0
+        else None
+    )
+
+    residual_syndrome_events = None
+    if decoder_name:
+        # Map per-round residual weights to bounded event counts so the denominator
+        # contract remains physically consistent:
+        #   residual_syndrome_events <= rounds * stabilizer_count.
+        # Multiple interventions in one round are capped by stabilizer_count.
+        residual_by_round: dict[int, int] = {}
+        round_cap = max(1, stabilizer_count)
+        for entry in decoder_interventions:
+            if str(entry.get("decoder", "")).strip().lower() != normalized_decoder:
+                continue
+            round_index = int(entry.get("round", 0))
+            weight = max(0, int(entry.get("residual_weight", 0)))
+            residual_by_round[round_index] = residual_by_round.get(round_index, 0) + weight
+        residual_syndrome_events = sum(
+            min(weight_sum, round_cap) for weight_sum in residual_by_round.values()
+        )
+    residual_syndrome_rate = (
+        residual_syndrome_events / syndrome_opportunities
+        if residual_syndrome_events is not None and syndrome_opportunities > 0
+        else None
+    )
+
+    legacy_request_count = (
+        int(expanded_shot_count)
+        if expanded_shot_count is not None
+        else max(len(noise_samples), rounds) * max(1, stabilizer_count)
+    )
     return {
         "run_id": run_id,
-        "request_count": request_count,
+        "request_count": legacy_request_count,
+        "request_line_count": request_line_count,
+        "response_line_count": response_line_count,
+        "response_ratio": response_ratio,
+        "expanded_shot_count": expanded_shot_count,
         "rounds": rounds,
         "stabilizer_count": stabilizer_count,
+        "syndrome_opportunities": syndrome_opportunities,
+        "decoder_name": decoder_name,
+        "logical_failures": logical_failures,
+        "logical_trials": logical_trials,
+        "logical_error_rate": logical_error_rate,
+        "physical_error_events": physical_error_events,
+        "physical_error_opportunities": physical_error_opportunities,
+        "physical_error_rate": physical_error_rate,
+        "residual_syndrome_events": residual_syndrome_events,
+        "residual_syndrome_rate": residual_syndrome_rate,
         "warning_rate": warning_rate,
         "noise_samples": noise_samples,
         "syndrome_samples": syndrome_samples,
@@ -505,6 +582,8 @@ def main() -> int:
                     syndrome_samples=all_syndrome_samples,
                     decoder_exact_metrics=_build_decoder_exact_metrics(decoder_outcomes, encoder_state),
                     decoder_interventions=all_decoder_interventions,
+                    decoder_name=decoders[0] if decoders else None,
+                    expanded_shot_count=replay_data.shots * replay_data.rounds,
                 )
                 status_code, response_text = _post_json(
                     telemetry_url,

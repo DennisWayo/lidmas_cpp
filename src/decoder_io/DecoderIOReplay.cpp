@@ -636,6 +636,7 @@ bool runDecoderIOReplay(const DecoderIOReplayConfig& cfg,
             const DecodeRequest req = decodeRequestFromJson(root);
             const DecodeResponse resp = adapter.decode(req);
             *out << decodeResponseJson(resp) << "\n";
+            out->flush();
             processed++;
         } catch (const std::exception& ex) {
             errors++;
@@ -648,6 +649,7 @@ bool runDecoderIOReplay(const DecoderIOReplayConfig& cfg,
                 return false;
             }
             *out << decodeResponseJson(makeErrorResponse(line_no, ex.what())) << "\n";
+            out->flush();
         }
     }
 

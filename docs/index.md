@@ -9,6 +9,19 @@ LiDMaS+ is a quantum error-correction simulation stack focused on surface-code t
 
 The project is designed for reproducible threshold workflows with deterministic seeding, pluggable decoders, and publication-ready CSV/plot artifacts.
 
+## Documentation Roadmap
+
+For technical review and trust-building, start with the **Technical Dossier**:
+
+1. System overview and architecture
+2. Formal problem definition
+3. Mathematical foundations and exact methods
+4. Proof obligations and algorithm specification
+5. Math-to-code traceability and script source catalog
+6. Validation and reproducibility protocol
+
+Primary entry page: [Technical Dossier](technical/index.md).
+
 ## Install
 
 ### PyPI (recommended)

@@ -33,3 +33,4 @@ cmake.version = ">=3.16"
 cmake.build-type = "Release"
 wheel.packages = ["python/lidmas"]
 sdist.include = ["python/lidmas/__init__.py", "python/lidmas/__main__.py"]
+sdist.exclude = ["lidmas+/**", "run_lidmas.sh"]

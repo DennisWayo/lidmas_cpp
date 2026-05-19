@@ -24,6 +24,11 @@ jobs:
           CIBW_SKIP: "*-musllinux_* pp* *-win32 *_i686"
           CIBW_ENVIRONMENT: "CMAKE_BUILD_PARALLEL_LEVEL=2"
 
+      - name: OSS boundary guardrails (repo + wheels)
+        run: |
+          bash scripts/check_oss_release_boundary.sh
+          bash scripts/check_oss_release_boundary.sh wheelhouse/*.whl
+
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-ubuntu-latest
@@ -43,6 +48,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip build
           python -m build --sdist
+
+      - name: OSS boundary guardrails (repo + sdist)
+        run: |
+          bash scripts/check_oss_release_boundary.sh
+          bash scripts/check_oss_release_boundary.sh dist/*.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:

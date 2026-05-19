@@ -1,0 +1,112 @@
+{
+  "schema_version": "v1",
+  "generated_at": "2026-05-19T09:47:38.425284Z",
+  "refresh_mode": "periodic_live_ingest",
+  "snapshots": [
+    {
+      "id": "ibm_kingston_2026q2",
+      "label": "IBM Kingston (2026-Q2)",
+      "vendor": "ibm",
+      "hardware_target": "superconducting",
+      "backend": "ibm_kingston",
+      "captured_at": "2026-04-21T10:20:30Z",
+      "source": "seed_default",
+      "metrics": {
+        "avg_1q_gate_error": 0.00092,
+        "avg_2q_gate_error": 0.0116,
+        "avg_readout_error": 0.0208,
+        "avg_t1_us": 91.2,
+        "avg_t2_us": 73.4,
+        "zz_coupling_khz": 18.1
+      }
+    },
+    {
+      "id": "ibm_torino_2026q1",
+      "label": "IBM Torino (2026-Q1)",
+      "vendor": "ibm",
+      "hardware_target": "superconducting",
+      "backend": "ibm_torino",
+      "captured_at": "2026-02-02T08:13:40Z",
+      "source": "seed_default",
+      "metrics": {
+        "avg_1q_gate_error": 0.00106,
+        "avg_2q_gate_error": 0.0124,
+        "avg_readout_error": 0.0237,
+        "avg_t1_us": 84.7,
+        "avg_t2_us": 66.9,
+        "zz_coupling_khz": 20.4
+      }
+    },
+    {
+      "id": "ankaa_r3_2026q2",
+      "label": "Ankaa R3 Replay (Live Fixture)",
+      "vendor": "ankaa",
+      "hardware_target": "superconducting",
+      "backend": "ankaa_r3_replay",
+      "captured_at": "2026-05-19T09:47:38.424504Z",
+      "source": "ankaa_fixture_refresh",
+      "metrics": {
+        "avg_1q_gate_error": 0.00170078,
+        "avg_2q_gate_error": 0.02797244,
+        "avg_readout_error": 0.03044531,
+        "avg_t1_us": 20.0,
+        "avg_t2_us": 15.0,
+        "zz_coupling_khz": 38.61417323
+      }
+    },
+    {
+      "id": "ionq_forte_2026q2",
+      "label": "IonQ Forte (2026-Q2)",
+      "vendor": "ionq",
+      "hardware_target": "trapped_ion",
+      "backend": "ionq_forte",
+      "captured_at": "2026-03-18T15:06:00Z",
+      "source": "seed_default",
+      "metrics": {
+        "avg_1q_gate_error": 0.00034,
+        "avg_ms_gate_error": 0.0036,
+        "avg_readout_error": 0.0122,
+        "avg_coherence_ms": 710.0,
+        "heating_quanta_per_ms": 0.083,
+        "addressing_crosstalk": 0.018
+      }
+    },
+    {
+      "id": "xanadu_aurora_2026q2",
+      "label": "Xanadu Aurora (Live Counts)",
+      "vendor": "xanadu",
+      "hardware_target": "photonic",
+      "backend": "xanadu_aurora",
+      "captured_at": "2026-05-19T09:47:38.425271Z",
+      "source": "xanadu_counts_refresh",
+      "metrics": {
+        "photon_loss_rate": 0.07818182,
+        "mode_mismatch": 0.01545455,
+        "phase_drift_deg": 2.81818182,
+        "detector_dark_count_rate": 0.01072727,
+        "homodyne_efficiency": 0.92205455,
+        "non_gaussian_injection_failure": 0.05709091
+      }
+    },
+    {
+      "id": "xanadu_borealis_2026q1",
+      "label": "Xanadu Borealis (Live Counts Proxy)",
+      "vendor": "xanadu",
+      "hardware_target": "photonic",
+      "backend": "xanadu_borealis",
+      "captured_at": "2026-05-19T09:47:38.425271Z",
+      "source": "xanadu_counts_refresh",
+      "metrics": {
+        "photon_loss_rate": 0.08756364,
+        "mode_mismatch": 0.01854545,
+        "phase_drift_deg": 3.24090909,
+        "detector_dark_count_rate": 0.01308727,
+        "homodyne_efficiency": 0.90822373,
+        "non_gaussian_injection_failure": 0.06850909
+      }
+    }
+  ],
+  "notes": [
+    "IBM token not set; using default IBM snapshots."
+  ]
+}

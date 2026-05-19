@@ -7,7 +7,25 @@ LiDMaS+ supports three data ingestion modes for hardware integration:
 3. In-process C++ adapter API
 
 Provider-specific examples live under `hardware_integration/<provider>/`.
-Current provider implementation: `hardware_integration/xanadu/`.
+Current provider directories:
+
+- `hardware_integration/ankaa/superconducting/`
+- `hardware_integration/ibm/superconducting/`
+- `hardware_integration/xanadu/`
+
+## Provider quick start
+
+```bash
+# Ankaa superconducting replay
+bash hardware_integration/ankaa/superconducting/run_ankaa_stream.sh \
+  --input hardware_integration/ankaa/superconducting/ankaa_fixture_example.json
+
+# IBM superconducting live polling
+export IBM_QUANTUM_API_KEY="<api-key>"
+bash hardware_integration/ibm/superconducting/run_ibm_live_stream.sh \
+  --backend-name ibm_kingston \
+  --poll-interval 30
+```
 
 ## Recommended default
 
@@ -31,6 +49,89 @@ Key fields:
 
 Each line is one `DecodeRequest` JSON object.
 See `schemas/decoder_io_example.ndjson` for examples.
+
+### Ankaa superconducting replay stream
+
+`hardware_integration/ankaa/superconducting/ankaa_qec_replay_stream.py` replays
+archived Ankaa-style measurements into normalized stream frames.
+
+Supported input formats:
+
+- fixture JSON (`ankaa_fixture_example.json` style)
+- HDF5 files with `hard_measurements` groups
+
+Basic replay:
+
+```bash
+bash hardware_integration/ankaa/superconducting/run_ankaa_stream.sh \
+  --input hardware_integration/ankaa/superconducting/ankaa_fixture_example.json \
+  --max-rounds 12
+```
+
+Replay and push telemetry to LiDMaS+ backend:
+
+```bash
+bash hardware_integration/ankaa/superconducting/run_ankaa_stream.sh \
+  --input /path/to/stability_8_without_resets_raw_data.h5 \
+  --run-id <RUN_UUID> \
+  --backend-base-url http://127.0.0.1:8080/api/v1
+```
+
+Install optional dependency automatically:
+
+```bash
+bash hardware_integration/ankaa/superconducting/run_ankaa_stream.sh \
+  --install-deps \
+  --input hardware_integration/ankaa/superconducting/ankaa_fixture_example.json
+```
+
+Outputs are written to:
+
+- `examples/results/hardware_integration/ankaa/superconducting/`
+
+### IBM superconducting live stream
+
+`hardware_integration/ibm/superconducting/ibm_live_noise_stream.py` polls IBM
+Quantum backend properties and emits normalized live frames.
+
+Authentication note:
+
+- LiDMaS+ UI does **not** ask for IBM API key.
+- IBM auth is resolved on the machine running the adapter via either:
+  - `IBM_QUANTUM_API_KEY` environment variable, or
+  - previously saved `qiskit-ibm-runtime` account credentials.
+- If neither is available, the session will fail and the error appears in adapter session logs.
+
+Start IBM live polling:
+
+```bash
+export IBM_QUANTUM_API_KEY="<api-key>"
+bash hardware_integration/ibm/superconducting/run_ibm_live_stream.sh \
+  --backend-name ibm_kingston \
+  --poll-interval 30
+```
+
+Live polling with telemetry push:
+
+```bash
+export IBM_QUANTUM_API_KEY="<api-key>"
+bash hardware_integration/ibm/superconducting/run_ibm_live_stream.sh \
+  --backend-name ibm_kingston \
+  --run-id <RUN_UUID> \
+  --backend-base-url http://127.0.0.1:8080/api/v1
+```
+
+Install optional IBM dependency automatically:
+
+```bash
+bash hardware_integration/ibm/superconducting/run_ibm_live_stream.sh \
+  --install-deps \
+  --backend-name ibm_kingston
+```
+
+Outputs are written to:
+
+- `examples/results/hardware_integration/ibm/superconducting/`
 
 ### Xanadu dataset conversion helper
 

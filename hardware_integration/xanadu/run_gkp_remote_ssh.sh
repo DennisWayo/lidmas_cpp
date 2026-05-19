@@ -30,6 +30,9 @@ Options:
   --telemetry-url <url>         Direct telemetry endpoint URL (overrides backend-base-url/run-id)
   --max-telemetry-frames <n>    Max request rows to convert into telemetry (default: 1200; 0 = all)
   --http-timeout <seconds>      HTTP timeout for telemetry push (default: 15.0)
+  --disable-live-telemetry      Disable incremental telemetry push during primary replay
+  --live-push-every <n>         Push incremental telemetry every N new response frames (default: 8)
+  --live-push-interval <s>      Seconds between incremental telemetry checks (default: 0.8)
   --primary-decoder <name>      Primary correction decoder (default: mwpm)
   --shadow-decoders <csv>       Shadow decoders for exact evaluation (default: <none>)
   --neural-model <path>         Local neural model path (required for neural_mwpm replay)
@@ -72,6 +75,9 @@ BACKEND_BASE_URL=""
 TELEMETRY_URL=""
 MAX_TELEMETRY_FRAMES=1200
 HTTP_TIMEOUT=15.0
+LIVE_TELEMETRY=1
+LIVE_PUSH_EVERY=8
+LIVE_PUSH_INTERVAL=0.8
 PRIMARY_DECODER="mwpm"
 SHADOW_DECODERS=""
 NEURAL_MODEL=""
@@ -142,6 +148,18 @@ while [ "${#}" -gt 0 ]; do
       HTTP_TIMEOUT="${2:-}"
       shift 2
       ;;
+    --disable-live-telemetry)
+      LIVE_TELEMETRY=0
+      shift
+      ;;
+    --live-push-every)
+      LIVE_PUSH_EVERY="${2:-}"
+      shift 2
+      ;;
+    --live-push-interval)
+      LIVE_PUSH_INTERVAL="${2:-}"
+      shift 2
+      ;;
     --primary-decoder)
       PRIMARY_DECODER="${2:-}"
       shift 2
@@ -210,6 +228,17 @@ case "${MAX_TELEMETRY_FRAMES}" in
     ;;
 esac
 
+case "${LIVE_PUSH_EVERY}" in
+  ''|*[!0-9]*)
+    echo "Error: --live-push-every must be a positive integer." >&2
+    exit 1
+    ;;
+esac
+if [ "${LIVE_PUSH_EVERY}" -le 0 ]; then
+  echo "Error: --live-push-every must be > 0." >&2
+  exit 1
+fi
+
 PRIMARY_DECODER="$(echo "${PRIMARY_DECODER}" | tr -d '[:space:]')"
 if [ -z "${PRIMARY_DECODER}" ]; then
   echo "Error: --primary-decoder cannot be empty." >&2
@@ -219,10 +248,18 @@ fi
 normalize_decoder_csv() {
   local raw="$1"
   local joined=""
-  local item
-  IFS=',' read -r -a items <<< "${raw}"
-  for item in "${items[@]}"; do
-    item="$(echo "${item}" | tr -d '[:space:]')"
+  local item=""
+  local rest=""
+
+  rest="$(printf '%s' "${raw}" | tr -d '[:space:]')"
+  while [ -n "${rest}" ]; do
+    if [ "${rest#*,}" != "${rest}" ]; then
+      item="${rest%%,*}"
+      rest="${rest#*,}"
+    else
+      item="${rest}"
+      rest=""
+    fi
     if [ -z "${item}" ]; then
       continue
     fi
@@ -236,6 +273,35 @@ normalize_decoder_csv() {
 }
 
 SHADOW_DECODERS="$(normalize_decoder_csv "${SHADOW_DECODERS}")"
+
+PY_BIN=""
+HAS_TELEMETRY_TARGET=0
+if [ -n "${RUN_ID}" ] && { [ -n "${TELEMETRY_URL}" ] || [ -n "${BACKEND_BASE_URL}" ]; }; then
+  HAS_TELEMETRY_TARGET=1
+  PY_BIN="$(examples_python_bin "${REPO_ROOT}")" || {
+    echo "Error: python3 not found; cannot push Xanadu telemetry." >&2
+    exit 1
+  }
+fi
+
+push_xanadu_telemetry_snapshot() {
+  local frame_count="$1"
+  local response_file="$2"
+  local telemetry_args=(
+    --input "${LOCAL_OUT}"
+    --run-id "${RUN_ID}"
+    --max-frames "${frame_count}"
+    --http-timeout "${HTTP_TIMEOUT}"
+    --responses "${response_file}"
+    --primary-decoder "${PRIMARY_DECODER}"
+  )
+  if [ -n "${TELEMETRY_URL}" ]; then
+    telemetry_args+=(--telemetry-url "${TELEMETRY_URL}")
+  else
+    telemetry_args+=(--backend-base-url "${BACKEND_BASE_URL}")
+  fi
+  "${PY_BIN}" "${SCRIPT_DIR}/push_decoder_requests_telemetry.py" "${telemetry_args[@]}"
+}
 
 require_cmd ssh
 require_cmd scp
@@ -340,7 +406,99 @@ if [ "${RUN_REPLAY}" -eq 1 ]; then
       fi
     fi
 
-    if bash "${SCRIPT_DIR}/replay.sh" "${replay_args[@]}"; then
+    replay_status=0
+    if [ "${decoder}" = "${PRIMARY_DECODER}" ] && [ "${LIVE_TELEMETRY}" -eq 1 ] && [ "${HAS_TELEMETRY_TARGET}" -eq 1 ]; then
+      : > "${decoder_resp}"
+      echo "[telemetry-live] streaming primary replay telemetry during decoder execution"
+      bash "${SCRIPT_DIR}/replay.sh" "${replay_args[@]}" &
+      replay_pid=$!
+      (
+        last_live_pushed=0
+        live_push_count=0
+        while kill -0 "${replay_pid}" 2>/dev/null; do
+          if [ -f "${decoder_resp}" ]; then
+            current_lines="$(wc -l < "${decoder_resp}" | tr -d '[:space:]')"
+          else
+            current_lines=0
+          fi
+          if [ -z "${current_lines}" ]; then
+            current_lines=0
+          fi
+          live_frames="${current_lines}"
+          if [ "${MAX_TELEMETRY_FRAMES}" -gt 0 ] && [ "${live_frames}" -gt "${MAX_TELEMETRY_FRAMES}" ]; then
+            live_frames="${MAX_TELEMETRY_FRAMES}"
+          fi
+          frame_delta=$((live_frames - last_live_pushed))
+          if [ "${live_frames}" -gt 0 ] && [ "${frame_delta}" -ge "${LIVE_PUSH_EVERY}" ]; then
+            if push_xanadu_telemetry_snapshot "${live_frames}" "${decoder_resp}"; then
+              last_live_pushed="${live_frames}"
+              live_push_count=$((live_push_count + 1))
+              echo "[telemetry-live] pushed frames=${live_frames}"
+            else
+              echo "[telemetry-live] warning: incremental push failed at frames=${live_frames}" >&2
+            fi
+          fi
+          sleep "${LIVE_PUSH_INTERVAL}"
+        done
+
+        if [ -f "${decoder_resp}" ]; then
+          final_lines="$(wc -l < "${decoder_resp}" | tr -d '[:space:]')"
+        else
+          final_lines=0
+        fi
+        if [ -z "${final_lines}" ]; then
+          final_lines=0
+        fi
+        final_frames="${final_lines}"
+        if [ "${MAX_TELEMETRY_FRAMES}" -gt 0 ] && [ "${final_frames}" -gt "${MAX_TELEMETRY_FRAMES}" ]; then
+          final_frames="${MAX_TELEMETRY_FRAMES}"
+        fi
+
+        # If replay finished too quickly to observe incremental file growth,
+        # emit staged snapshots so UI state-map panels still progress live.
+        if [ "${final_frames}" -gt "${LIVE_PUSH_EVERY}" ] && [ "${live_push_count}" -eq 0 ]; then
+          staged_step=$((final_frames / 6))
+          if [ "${staged_step}" -lt "${LIVE_PUSH_EVERY}" ]; then
+            staged_step="${LIVE_PUSH_EVERY}"
+          fi
+          staged_frame="${staged_step}"
+          while [ "${staged_frame}" -lt "${final_frames}" ]; do
+            if [ "${staged_frame}" -gt "${last_live_pushed}" ]; then
+              if push_xanadu_telemetry_snapshot "${staged_frame}" "${decoder_resp}"; then
+                last_live_pushed="${staged_frame}"
+                echo "[telemetry-live] pushed staged frames=${staged_frame}"
+              else
+                echo "[telemetry-live] warning: staged incremental push failed at frames=${staged_frame}" >&2
+              fi
+              sleep "${LIVE_PUSH_INTERVAL}"
+            fi
+            staged_frame=$((staged_frame + staged_step))
+          done
+        fi
+
+        if [ "${final_frames}" -gt "${last_live_pushed}" ]; then
+          if push_xanadu_telemetry_snapshot "${final_frames}" "${decoder_resp}"; then
+            echo "[telemetry-live] pushed final frames=${final_frames}"
+          else
+            echo "[telemetry-live] warning: final incremental push failed at frames=${final_frames}" >&2
+          fi
+        fi
+      ) &
+      live_push_pid=$!
+
+      if wait "${replay_pid}"; then
+        replay_status=0
+      else
+        replay_status=$?
+      fi
+      wait "${live_push_pid}" || true
+    elif bash "${SCRIPT_DIR}/replay.sh" "${replay_args[@]}"; then
+      replay_status=0
+    else
+      replay_status=$?
+    fi
+
+    if [ "${replay_status}" -eq 0 ]; then
       TELEMETRY_RESPONSES+=("${decoder_resp}")
       if [ "${decoder}" = "${PRIMARY_DECODER}" ]; then
         LOCAL_RESP="${decoder_resp}"
@@ -356,14 +514,9 @@ if [ "${RUN_REPLAY}" -eq 1 ]; then
 fi
 
 if [ -n "${RUN_ID}" ]; then
-  if [ -z "${TELEMETRY_URL}" ] && [ -z "${BACKEND_BASE_URL}" ]; then
+  if [ "${HAS_TELEMETRY_TARGET}" -eq 0 ]; then
     echo "[telemetry] run-id provided but no telemetry target (backend-base-url/telemetry-url); skipping push" >&2
   else
-    PY_BIN="$(examples_python_bin "${REPO_ROOT}")" || {
-      echo "Error: python3 not found; cannot push Xanadu telemetry." >&2
-      exit 1
-    }
-
     telemetry_args=(
       --input "${LOCAL_OUT}"
       --run-id "${RUN_ID}"

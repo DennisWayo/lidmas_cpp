@@ -23,11 +23,29 @@ extra_javascript:
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
-  - CLI Reference: cli-reference.md
-  - Examples & Workflows: examples-workflows.md
-  - Architecture: architecture.md
-  - LiDMaS+ Math Notes: lidmas-math-lecture.md
-  - Hardware Integration: hardware-integration.md
+  - Technical Dossier:
+      - Overview & TOC: technical/index.md
+      - System Overview: technical/system-overview.md
+      - Software Architecture: technical/software-architecture.md
+      - Formal Problem Definition: technical/formal-problem-definition.md
+      - Mathematical Foundations: technical/mathematical-foundations.md
+      - Exact Methods & Proof Obligations: technical/exact-methods-and-proofs.md
+      - Algorithm Specification: technical/algorithm-specification.md
+      - Math-to-Code Traceability: technical/math-to-code-traceability.md
+      - Script Source Catalog: technical/script-source-catalog.md
+      - Validation & Reproducibility: technical/validation-and-reproducibility.md
+      - Results, Risks, and Limits: technical/results-risks-limits.md
+      - Appendices: technical/appendices.md
+  - User Guides:
+      - Getting Started: getting-started.md
+      - Developer Guide: developer-guide.md
+      - CLI Reference: cli-reference.md
+      - Examples & Workflows: examples-workflows.md
+      - Hardware Integration: hardware-integration.md
+      - Architecture (Legacy): architecture.md
+  - Math Notes (Detailed): lidmas-math-lecture.md
   - Reproducibility & Citation: reproducibility-citation.md
-  - Read the Docs Setup: readthedocs-setup.md
+  - Releases:
+      - v1.2.0-rc.2: releases/v1.2.0-rc.2.md
+      - v1.2.0-rc.1: releases/v1.2.0-rc.1.md
+  - Docs Tooling: readthedocs-setup.md
