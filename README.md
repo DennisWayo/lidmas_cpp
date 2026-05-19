@@ -10,9 +10,7 @@
 # LiDMaS+
 
 **Logical Injection & Decoding Modeling System**  
-LiDMaS+ is an open-source CLI toolkit for reproducible quantum error-correction simulation, decoder benchmarking, and hardware-to-decoder replay.
-
-LiDMaS+ exists to make QEC experiments reproducible, scriptable, and directly comparable across codes, decoders, and hardware data pipelines.
+LiDMaS+ is an open-source CLI toolkit for reproducible quantum error-correction simulation, decoder benchmarking, and hardware-to-decoder replay. This exists to make QEC experiments reproducible, scriptable, and directly comparable across codes, decoders, and hardware data pipelines.
 
 Current coverage:
 
@@ -28,8 +26,7 @@ It provides:
 - deterministic runs with explicit seed control,
 - reusable examples for thresholds, replay, and analysis outputs.
 
-If you need the full technical depth, use the published docs:  
-<https://denniswayo.github.io/lidmas_cpp/>
+If you need the full technical depth, use the published [docs](https://denniswayo.github.io/lidmas_cpp/)
 
 ## Statement of Need
 
@@ -41,9 +38,9 @@ LiDMaS+ addresses this by giving researchers and engineers a single CLI and repe
 - consistent decoder comparison,
 - hardware-to-decoder replay and artifact generation.
 
-## Visuals
+![LiDMaS+ UI preview (active development)](docs/images/ui_active_development.png)
 
-![LiDMaS+ output preview](docs/images/paper_03_graphic.png)
+UI status: under active development. For stable workflows today, use the CLI (`lidmas`) below.
 
 ## Getting Started
 
@@ -95,9 +92,9 @@ Run from source build (without PyPI install):
 
 For full examples and workflow guides:
 
-- <https://denniswayo.github.io/lidmas_cpp/getting-started/>
-- <https://denniswayo.github.io/lidmas_cpp/cli-reference/>
-- <https://denniswayo.github.io/lidmas_cpp/examples-workflows/>
+- [Getting-Started](https://denniswayo.github.io/lidmas_cpp/getting-started/)
+- [CLI-reference](https://denniswayo.github.io/lidmas_cpp/cli-reference/)
+- [Examples-workflows](https://denniswayo.github.io/lidmas_cpp/examples-workflows/)
 
 ## Hardware Integrations
 
@@ -109,8 +106,7 @@ For full examples and workflow guides:
 | Replay | Xanadu Aurora/QCA/GKP dataset conversion + replay | Xanadu | Python converter + LiDMaS `decoder_io_replay` |
 | Replay | Simulator framework replay | PennyLane / Qiskit / Cirq ecosystems | PennyLane, Qiskit, Cirq |
 
-Integration examples and commands are documented here:  
-<https://denniswayo.github.io/lidmas_cpp/hardware-integration/>
+Hardware Integration examples and commands are documented [here](https://denniswayo.github.io/lidmas_cpp/hardware-integration/)
 
 ## Contributing
 
@@ -119,6 +115,26 @@ Bug reports, feature requests, and pull requests are welcome.
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - Security policy: [SECURITY.md](SECURITY.md)
+
+## Citation
+
+If you use LiDMaS+ in academic work, cite the software release used for your experiments (tag + commit hash).
+
+Paper reference (`paper_03`):
+
+![paper_03 graphic](docs/images/paper_03_graphic.png)
+
+```bibtex
+@misc{wayo2026unifiedhardwaretodecoderarchitecturehybrid,
+  title={A Unified Hardware-to-Decoder Architecture for Hybrid Continuous-Variable and Discrete-Variable Quantum Error Correction in LiDMaS+},
+  author={Dennis Delali Kwesi Wayo and Chinonso Onah and Leonardo Goliatt and Sven Groppe},
+  year={2026},
+  eprint={2604.15389},
+  archivePrefix={arXiv},
+  primaryClass={quant-ph},
+  url={https://arxiv.org/abs/2604.15389}
+}
+```
 
 ## License
 
