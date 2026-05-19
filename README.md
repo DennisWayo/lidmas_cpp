@@ -38,6 +38,56 @@ LiDMaS+ addresses this by giving researchers and engineers a single CLI and repe
 - consistent decoder comparison,
 - hardware-to-decoder replay and artifact generation.
 
+## Model-Exact Scope
+
+Let a run scope be
+
+`S ∈ 𝒮, S = (C, D, M, Θ, σ, I, V)`
+
+where:
+- `C`: code family/configuration,
+- `D`: decoder set,
+- `M`: execution mode,
+- `Θ`: algorithm/hyperparameter settings,
+- `σ`: seed and stochastic controls,
+- `I`: input stream or dataset identity,
+- `V`: executable/version identity.
+
+Define the run key as:
+
+`K(S) = H(ser(S))`
+
+for a canonical serializer `ser` and collision-resistant hash `H`. LiDMaS stores `K(S)` with each result artifact.
+
+Proposition:
+`∀ S₁,S₂ ∈ 𝒮, S₁ ≠ S₂ ⇒ Pr[K(S₁) ≠ K(S₂)] ≥ 1 − ε` for negligible `ε`.
+
+So, except with negligible probability, artifacts from `S₁` and `S₂` are scope-distinct.
+
+Proof sketch:
+1. `S₁ ≠ S₂ ⇒ ser(S₁) ≠ ser(S₂)` (canonical serialization is injective on scope tuples).
+2. `∀ x ≠ y, Pr[H(x)=H(y)] ≤ ε` by collision resistance.
+3. Substitute `x=ser(S₁), y=ser(S₂)`: `Pr[K(S₁)=K(S₂)] ≤ ε`, hence `Pr[K(S₁)≠K(S₂)] ≥ 1−ε`.
+
+## Design-to-Result Workflow
+
+Let experiment design be `E = (C, D, 𝒩, T, σ)`.
+
+Define scoped execution and outputs as:
+`S = (E, M, Θ, I, V), K = H(ser(S)), R = Φ(S), A = (K, R, μ)`.
+
+Pipeline:
+`E →[encode in CLI] S →[Φ (simulate/replay)] R →[persist with K] A →[analyze] Δ →[rerun with S] R′ →[‖R − R′‖ ≤ τ] validated results`
+
+Step map:
+1. Specify `E`.
+2. Encode `S` in `lidmas ...` arguments.
+3. Execute `Φ` in the selected mode.
+4. Persist `A=(K,R,μ)`.
+5. Compute comparison/analysis outputs `Δ`.
+6. Re-run to get `R′` and check `‖R − R′‖ ≤ τ`.
+7. Promote validated artifacts to reports/plots/paper bundles.
+
 ![LiDMaS+ UI preview (active development)](docs/images/ui_active_development.png)
 
 UI status: under active development. For stable workflows today, use the CLI (`lidmas`) below.
