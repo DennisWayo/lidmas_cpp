@@ -97,6 +97,7 @@ lidmas+/design/*.png
 lidmas+/design/*.pdf
 
 # Private LiDMaS+ commercialization workspace
+lidmas+/
 lidmas+/design/
 lidmas+/frontend/
 lidmas+/README.md
