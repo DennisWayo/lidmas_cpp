@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="docs/images/lidmas-logo.png" alt="LiDMaS+ logo" width="760" />
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/C%2B%2B-20-black?logo=c%2B%2B&logoColor=white" />
   <img src="https://img.shields.io/badge/build-CMake-black?logo=cmake&logoColor=white" />
   <a href="https://pypi.org/project/lidmas/"><img src="https://img.shields.io/pypi/v/lidmas?label=PyPI&logo=pypi" /></a>
@@ -7,9 +11,6 @@
   <img src="https://img.shields.io/github/license/DennisWayo/lidmas_cpp?color=black" />
 </p>
 
-# LiDMaS+
-
-**Logical Injection & Decoding Modeling System**  
 LiDMaS+ is an open-source CLI toolkit for reproducible quantum error-correction simulation, decoder benchmarking, and hardware-to-decoder replay. This exists to make QEC experiments reproducible, scriptable, and directly comparable across codes, decoders, and hardware data pipelines.
 
 Current coverage:
