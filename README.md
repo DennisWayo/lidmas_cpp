@@ -27,7 +27,7 @@ It provides:
 - deterministic runs with explicit seed control,
 - reusable examples for thresholds, replay, and analysis outputs.
 
-If you need the full technical depth, use the published [docs](https://denniswayo.github.io/lidmas_cpp/)
+If you need the full technical depth, use the published [LiDMaS+ docs](https://gottesman-software.github.io/lidmas_cpp/)
 
 ## Statement of Need
 
