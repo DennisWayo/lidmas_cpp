@@ -10,7 +10,7 @@ This repository includes the files required for automatic Read the Docs builds:
 ## Enable on Read the Docs
 
 1. Sign in to Read the Docs.
-2. Import `DennisWayo/lidmas_cpp` from GitHub.
+2. Import `Gottesman-Software/lidmas_cpp` from GitHub.
 3. Confirm the default branch and Python version (configured in `.readthedocs.yaml`).
 4. Trigger a build.
 
@@ -42,4 +42,4 @@ In repository settings:
 
 Published URL:
 
-- `https://denniswayo.github.io/lidmas_cpp/`
+- `https://gottesman-software.github.io/lidmas_cpp/`
