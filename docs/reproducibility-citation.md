@@ -43,7 +43,7 @@ Suggested software citation:
 
 ```text
 Wayo, D. (Year). LiDMaS+ (Version X.Y.Z) [Computer software].
-https://github.com/DennisWayo/lidmas_cpp
+https://github.com/Gottesman-Software/lidmas_cpp
 ```
 
 ## License

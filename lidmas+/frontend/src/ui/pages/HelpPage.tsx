@@ -12,7 +12,7 @@ interface FaqItem {
   answer: string;
 }
 
-const DOCUMENTATION_URL = "https://denniswayo.github.io/lidmas_cpp/";
+const DOCUMENTATION_URL = "https://gottesman-software.github.io/lidmas_cpp/";
 
 const helpCards: HelpCard[] = [
   {
@@ -49,7 +49,7 @@ const helpCards: HelpCard[] = [
     title: "Release Notes",
     description: "Track features, fixes, and compatibility changes per version.",
     cta: "View Releases →",
-    href: "https://github.com/DennisWayo/lidmas_cpp/releases",
+    href: "https://github.com/Gottesman-Software/lidmas_cpp/releases",
   },
 ];
 

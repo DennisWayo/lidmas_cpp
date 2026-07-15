@@ -6,9 +6,9 @@
   <img src="https://img.shields.io/badge/C%2B%2B-20-black?logo=c%2B%2B&logoColor=white" />
   <img src="https://img.shields.io/badge/build-CMake-black?logo=cmake&logoColor=white" />
   <a href="https://pypi.org/project/lidmas/"><img src="https://img.shields.io/pypi/v/lidmas?label=PyPI&logo=pypi" /></a>
-  <a href="https://github.com/DennisWayo/lidmas_cpp/actions/workflows/ci.yml"><img src="https://github.com/DennisWayo/lidmas_cpp/actions/workflows/ci.yml/badge.svg" /></a>
-  <a href="https://denniswayo.github.io/lidmas_cpp/"><img src="https://img.shields.io/website?url=https%3A%2F%2Fdenniswayo.github.io%2Flidmas_cpp%2F&label=docs&logo=github" /></a>
-  <img src="https://img.shields.io/github/license/DennisWayo/lidmas_cpp?color=black" />
+  <a href="https://github.com/Gottesman-Software/lidmas_cpp/actions/workflows/ci.yml"><img src="https://github.com/Gottesman-Software/lidmas_cpp/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://gottesman-software.github.io/lidmas_cpp/"><img src="https://img.shields.io/website?url=https%3A%2F%2Fgottesman-software.github.io%2Flidmas_cpp%2F&label=docs&logo=github" /></a>
+  <img src="https://img.shields.io/github/license/Gottesman-Software/lidmas_cpp?color=black" />
 </p>
 
 LiDMaS+ is an open-source CLI toolkit for reproducible quantum error-correction simulation, decoder benchmarking, and hardware-to-decoder replay. This exists to make QEC experiments reproducible, scriptable, and directly comparable across codes, decoders, and hardware data pipelines.
@@ -27,7 +27,7 @@ It provides:
 - deterministic runs with explicit seed control,
 - reusable examples for thresholds, replay, and analysis outputs.
 
-If you need the full technical depth, use the published [docs](https://denniswayo.github.io/lidmas_cpp/)
+If you need the full technical depth, use the published [docs](https://gottesman-software.github.io/lidmas_cpp/)
 
 ## Statement of Need
 
@@ -92,6 +92,7 @@ Step map:
 ![LiDMaS+ UI preview (active development)](docs/images/ui_active_development.png)
 
 UI status: under active development. For stable workflows today, use the CLI (`lidmas`) below.
+Online UI: https://gottesman-software.github.io/lidmas_cpp/ui/
 
 ## Getting Started
 
@@ -143,9 +144,9 @@ Run from source build (without PyPI install):
 
 For full examples and workflow guides:
 
-- [Getting-Started](https://denniswayo.github.io/lidmas_cpp/getting-started/)
-- [CLI-reference](https://denniswayo.github.io/lidmas_cpp/cli-reference/)
-- [Examples-workflows](https://denniswayo.github.io/lidmas_cpp/examples-workflows/)
+- [Getting-Started](https://gottesman-software.github.io/lidmas_cpp/getting-started/)
+- [CLI-reference](https://gottesman-software.github.io/lidmas_cpp/cli-reference/)
+- [Examples-workflows](https://gottesman-software.github.io/lidmas_cpp/examples-workflows/)
 
 ## Hardware Integrations
 
@@ -157,7 +158,7 @@ For full examples and workflow guides:
 | Replay | Xanadu Aurora/QCA/GKP dataset conversion + replay | Xanadu | Python converter + LiDMaS `decoder_io_replay` |
 | Replay | Simulator framework replay | PennyLane / Qiskit / Cirq ecosystems | PennyLane, Qiskit, Cirq |
 
-Hardware Integration examples and commands are documented [here](https://denniswayo.github.io/lidmas_cpp/hardware-integration/)
+Hardware Integration examples and commands are documented [here](https://gottesman-software.github.io/lidmas_cpp/hardware-integration/)
 
 ## Contributing
 
