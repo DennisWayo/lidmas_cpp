@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "lidmas"
-version = "1.2.1"
+version = "1.2.2"
 description = "LiDMaS+ (Logical Injection & Decoding Modeling System) quantum error-correction simulator"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -22,8 +22,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/DennisWayo/lidmas_cpp"
-Repository = "https://github.com/DennisWayo/lidmas_cpp"
+Homepage = "https://github.com/Gottesman-Software/lidmas_cpp"
+Repository = "https://github.com/Gottesman-Software/lidmas_cpp"
 
 [project.scripts]
 lidmas = "lidmas.__main__:main"

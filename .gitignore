@@ -68,21 +68,33 @@ paper/figures/
 
 # Paper workflow outputs
 examples/paper_runs/paper_*/results/
+/paper_04/
+/figures/
+examples/paper_runs/paper_05/ibm_credentials.local.json
 
 # LaTeX artifacts and drafts
 *.tex
+/paper_*.bib
 
 # Local manuscript/support files kept out of VCS
 lidmas.bib
 live demo
 us-patent/
+/.local_artifacts/
+/run_lidmas.sh
+/simulator-data-source-reversed.png
 
 # Local PhD proposal workspace
 phd_tubaf/
 
+# Local startup/commercialization notes
+/startup/
+gottesman-startup-web/
+
 # Local slide/PPT workspace artifacts
 .venv_ppt/
 *_talk.pptx
+*_talk*.pptx
 
 # Rust backend build artifacts
 lidmas+/target/
@@ -96,9 +108,10 @@ lidmas+/frontend/*.tsbuildinfo
 lidmas+/design/*.png
 lidmas+/design/*.pdf
 
-# Private LiDMaS+ commercialization workspace
-lidmas+/
+# LiDMaS+ generated/local artifacts
+lidmas+/dashboard_metric_trust_classification.txt
 lidmas+/design/
-lidmas+/frontend/
-lidmas+/README.md
-gottesman-startup-web/
+lidmas+/desktop-swiftui/.build/
+
+# Large local data slices
+/hardware_integration/xanadu/sliced_real_data_1gb/
