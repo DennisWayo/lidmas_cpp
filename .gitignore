@@ -99,10 +99,8 @@ gottesman-startup-web/
 # Rust backend build artifacts
 lidmas+/target/
 
-# LiDMaS+ frontend build/deps artifacts
-lidmas+/frontend/node_modules/
-lidmas+/frontend/dist/
-lidmas+/frontend/*.tsbuildinfo
+# LiDMaS+ frontend source now lives in Gottesman-Software.github.io/site/studio/lidmas
+lidmas+/frontend/
 
 # LiDMaS+ design exports (generated)
 lidmas+/design/*.png

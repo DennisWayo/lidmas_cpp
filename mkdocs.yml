@@ -1,8 +1,8 @@
 site_name: LiDMaS+
 site_description: Logical Injection & Decoding Modeling System
-site_url: https://denniswayo.github.io/lidmas_cpp/
-repo_url: https://github.com/DennisWayo/lidmas_cpp
-repo_name: DennisWayo/lidmas_cpp
+site_url: https://gottesman-software.github.io/lidmas_cpp/
+repo_url: https://github.com/Gottesman-Software/lidmas_cpp
+repo_name: Gottesman-Software/lidmas_cpp
 docs_dir: docs
 
 theme:
