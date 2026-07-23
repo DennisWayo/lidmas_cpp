@@ -39,10 +39,10 @@ def public_error(message: str, status_code: int = 403) -> JSONResponse:
 
 def provider_fixture() -> list[dict[str, Any]]:
     providers = [
-        ("2fb9d977-b44f-4907-8826-82f7953ac26a", "GKP photonic replay", "photonic", "ready"),
-        ("93a9edc8-1e87-4af0-9f70-3bcf56261379", "Surface-code simulator", "simulated", "ready"),
-        ("e7fe27f7-4f0e-4992-95dc-a2f33cd9705f", "Decoder comparison fixture", "simulated", "degraded"),
-        ("4afcd5b2-f17c-49c4-9f3e-a68e7c6cf75b", "Loopback timing fixture", "other", "ready"),
+        ("2fb9d977-b44f-4907-8826-82f7953ac26a", "PennyLane circuit simulator", "simulated", "ready"),
+        ("93a9edc8-1e87-4af0-9f70-3bcf56261379", "Qiskit Aer noise simulator", "simulated", "ready"),
+        ("e7fe27f7-4f0e-4992-95dc-a2f33cd9705f", "Cirq syndrome simulator", "simulated", "ready"),
+        ("4afcd5b2-f17c-49c4-9f3e-a68e7c6cf75b", "SchroSIM photonic CV simulator", "simulated", "ready"),
     ]
     return [
         {
@@ -58,8 +58,8 @@ def provider_fixture() -> list[dict[str, Any]]:
             "supports_replay": True,
             "supports_live": False,
             "last_seen": utcnow(),
-            "readiness_note": "Public fixture provider. No credentials or hardware access.",
-            "notes": "Safe Gottesman Studio demo endpoint for replayable decoder evidence.",
+            "readiness_note": "Public simulator fixture. No credentials or hardware access.",
+            "notes": "Construct circuit, inject noise, extract syndrome data, and run a decoder policy.",
             "created_at": ISO_BASE,
             "updated_at": utcnow(),
         }
@@ -69,10 +69,10 @@ def provider_fixture() -> list[dict[str, Any]]:
 
 def job_fixture(providers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     labels = [
-        ("gkp_syndrome_replay", "running", 0),
-        ("surface_code_threshold_fixture", "completed", 1),
-        ("decoder_comparison_fixture", "completed", 2),
-        ("loopback_timing_fixture", "queued", 3),
+        ("pennylane_circuit_noise_syndrome", "running", 0),
+        ("qiskit_aer_noise_policy", "completed", 1),
+        ("cirq_syndrome_extraction_policy", "completed", 2),
+        ("schrosim_cv_decoder_policy", "queued", 3),
     ]
     jobs: list[dict[str, Any]] = []
     for index, (label, status, provider_index) in enumerate(labels):
@@ -85,7 +85,7 @@ def job_fixture(providers: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "decoders": DECODERS,
                 "priority": 5,
                 "status": status,
-                "message": "Public LiDMaS+ replay fixture",
+                "message": "Public simulator pipeline: circuit construction, noise injection, syndrome extraction, decoder policy.",
                 "created_at": created_at,
                 "updated_at": created_at,
                 "started_at": None if status == "queued" else created_at,
@@ -186,24 +186,38 @@ def run_fixture(providers: list[dict[str, Any]], jobs: list[dict[str, Any]]) -> 
         {
             "id": DEFAULT_RUN_ID,
             "job_id": jobs[0]["id"],
-            "workflow_id": "public-demo-gkp",
+            "workflow_id": "pennylane-surface-code-policy",
             "provider_id": providers[0]["id"],
-            "dataset_label": "gkp_surface_25_rounds_24",
+            "dataset_label": "pennylane_surface_d5_depolarizing_syndromes",
             "decoders": DECODERS,
             "status": "running",
-            "message": "Public GKP decode replay is available for inspection.",
+            "message": "PennyLane surface-code circuit with depolarizing noise, extracted syndromes, and MWPM decoder policy.",
             "artifacts": [
+                {
+                    "name": "constructed_circuit",
+                    "kind": "json",
+                    "path": "public://runs/pennylane/constructed_circuit.json",
+                    "sha256": None,
+                    "created_at": "2026-04-20T14:09:00Z",
+                },
+                {
+                    "name": "noise_injection",
+                    "kind": "json",
+                    "path": "public://runs/pennylane/noise_injection.json",
+                    "sha256": None,
+                    "created_at": "2026-04-20T14:09:30Z",
+                },
                 {
                     "name": "syndrome_trace",
                     "kind": "jsonl",
-                    "path": "public://runs/gkp/syndrome_trace.jsonl",
+                    "path": "public://runs/pennylane/syndrome_trace.jsonl",
                     "sha256": None,
                     "created_at": "2026-04-20T14:10:00Z",
                 },
                 {
-                    "name": "decoder_metrics",
+                    "name": "decoder_policy_metrics",
                     "kind": "csv",
-                    "path": "public://runs/gkp/decoder_metrics.csv",
+                    "path": "public://runs/pennylane/decoder_policy_metrics.csv",
                     "sha256": None,
                     "created_at": "2026-04-20T14:11:30Z",
                 },
@@ -224,18 +238,33 @@ def run_fixture(providers: list[dict[str, Any]], jobs: list[dict[str, Any]]) -> 
             "updated_at": utcnow(),
         }
     ]
+    dataset_labels = [
+        "qiskit_aer_surface_d5_phase_flip_syndromes",
+        "cirq_repetition_code_bitflip_syndromes",
+        "schrosim_cv_gkp_loss_syndromes",
+    ]
+    workflow_ids = [
+        "qiskit-aer-noise-policy",
+        "cirq-syndrome-policy",
+        "schrosim-cv-decoder-policy",
+    ]
+    messages = [
+        "Qiskit Aer circuit with phase-flip noise, syndrome extraction, and decoder-policy replay.",
+        "Cirq stabilizer circuit with bit-flip injection, syndrome extraction, and decoder-policy replay.",
+        "SchroSIM CV photonic circuit with loss-style noise, syndrome extraction, and decoder-policy replay.",
+    ]
     for index in range(1, 4):
         run_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"lidmas-public-run-{index}"))
         runs.append(
             {
                 "id": run_id,
                 "job_id": jobs[index % len(jobs)]["id"],
-                "workflow_id": f"public-demo-{index}",
+                "workflow_id": workflow_ids[index - 1],
                 "provider_id": providers[index % len(providers)]["id"],
-                "dataset_label": f"public_replay_fixture_{index}",
+                "dataset_label": dataset_labels[index - 1],
                 "decoders": DECODERS,
                 "status": "finished",
-                "message": "Fixture replay completed.",
+                "message": messages[index - 1],
                 "artifacts": [],
                 "metrics": {
                     "warning_rate": round(0.11 + index * 0.015, 6),
@@ -498,27 +527,47 @@ def vendor_calibrations() -> dict[str, Any]:
         "refresh_mode": "static-public-fixture",
         "snapshots": [
             {
-                "id": "public-xanadu-gkp-fixture",
-                "label": "Public GKP replay fixture",
-                "vendor": "xanadu",
-                "hardware_target": "photonic",
-                "backend": "public_replay",
+                "id": "public-pennylane-surface-fixture",
+                "label": "PennyLane surface-code depolarizing model",
+                "vendor": "pennylane",
+                "hardware_target": "simulated",
+                "backend": "pennylane_default_qubit",
                 "captured_at": "2026-04-20T14:00:00Z",
-                "source": "fixture",
-                "metrics": {"warning_rate": 0.17, "logical_error_rate": 0.017083},
+                "source": "public_simulator_fixture",
+                "metrics": {"physical_error_rate": 0.0112, "syndrome_trigger_rate": 0.21, "logical_error_rate": 0.017083},
             },
             {
-                "id": "public-loopback-fixture",
-                "label": "Loopback timing fixture",
-                "vendor": "gottesman",
+                "id": "public-qiskit-aer-fixture",
+                "label": "Qiskit Aer phase-flip noise model",
+                "vendor": "qiskit",
                 "hardware_target": "simulated",
-                "backend": "loopback",
+                "backend": "qiskit_aer",
                 "captured_at": "2026-04-20T14:05:00Z",
-                "source": "fixture",
-                "metrics": {"latency_ms": 42.0, "jitter_ms": 1.6},
+                "source": "public_simulator_fixture",
+                "metrics": {"phase_flip_rate": 0.014, "syndrome_trigger_rate": 0.18, "logical_error_rate": 0.015},
+            },
+            {
+                "id": "public-cirq-fixture",
+                "label": "Cirq repetition-code bit-flip model",
+                "vendor": "cirq",
+                "hardware_target": "simulated",
+                "backend": "cirq_simulator",
+                "captured_at": "2026-04-20T14:06:00Z",
+                "source": "public_simulator_fixture",
+                "metrics": {"bit_flip_rate": 0.0125, "syndrome_trigger_rate": 0.16, "logical_error_rate": 0.018},
+            },
+            {
+                "id": "public-schrosim-fixture",
+                "label": "SchroSIM CV photonic loss model",
+                "vendor": "schrosim",
+                "hardware_target": "simulated",
+                "backend": "schrosim_cv",
+                "captured_at": "2026-04-20T14:07:00Z",
+                "source": "public_simulator_fixture",
+                "metrics": {"photon_loss_rate": 0.021, "displacement_sigma": 0.16, "logical_error_rate": 0.021},
             },
         ],
-        "notes": ["Static public demo catalog. No live vendor credentials or private calibrations are loaded."],
+        "notes": ["Static public simulator catalog. No live vendor credentials, hardware data, or private calibrations are loaded."],
     }
 
 
@@ -568,11 +617,13 @@ async def create_integration_session_public(request: Request) -> dict[str, Any]:
     run_id = str(payload.get("run_id") or DEFAULT_RUN_ID)
     if not any(run["id"] == run_id for run in RUNS):
         run_id = DEFAULT_RUN_ID
-    adapter_id = str(payload.get("adapter_id") or "xanadu_gkp_remote_replay")
+    adapter_id = str(payload.get("adapter_id") or "pennylane_surface_replay")
     if "ibm" in adapter_id.lower() or str((payload.get("config") or {}).get("ibm_live_source_mode") or "").lower() == "qpu":
         return public_error("Live provider sessions are disabled in the public LiDMaS+ API.")
-    provider = "xanadu"
-    if "qiskit" in adapter_id:
+    provider = "pennylane"
+    if "schrosim" in adapter_id:
+        provider = "schrosim"
+    elif "qiskit" in adapter_id:
         provider = "qiskit"
     elif "cirq" in adapter_id:
         provider = "cirq"
@@ -605,9 +656,9 @@ async def stop_integration_session_public(session_id: str) -> dict[str, Any]:
         "session": {
             "id": session_id,
             "run_id": DEFAULT_RUN_ID,
-            "provider": "xanadu",
+            "provider": "pennylane",
             "mode": "replay_static",
-            "adapter_id": "xanadu_gkp_remote_replay",
+            "adapter_id": "pennylane_surface_replay",
             "status": "cancelled",
             "config": {},
             "started_at": utcnow(),
