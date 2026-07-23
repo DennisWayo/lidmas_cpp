@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: lidmas-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r public_api/requirements.txt
+    startCommand: uvicorn public_api.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: LIDMAS_PUBLIC_API
+        value: "1"
+      - key: CORS_ORIGINS
+        value: https://gottesman-software.github.io,http://127.0.0.1:5173,http://localhost:5173
