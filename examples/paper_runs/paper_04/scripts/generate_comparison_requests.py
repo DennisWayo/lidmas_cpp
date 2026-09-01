@@ -359,6 +359,48 @@ def _apply_measurement_noise(bits: list[int], p_meas: float, rng: random.Random)
             bits[i] ^= 1
 
 
+def _logical_x_indices(geom: SurfaceGeometry) -> list[int]:
+    y_mid = geom.distance // 2
+    return [y_mid * (geom.distance - 1) + x for x in range(geom.distance - 1)]
+
+
+def _error_indices(bits: list[int]) -> list[int]:
+    return [idx for idx, bit in enumerate(bits) if bit & 1]
+
+
+def _parity_on(indices: list[int], bits: list[int]) -> int:
+    parity = 0
+    for idx in indices:
+        if 0 <= idx < len(bits):
+            parity ^= bits[idx] & 1
+    return parity
+
+
+def _truth_record(
+    *,
+    code_id: str,
+    shot_index: int,
+    dataset_name: str,
+    geom: SurfaceGeometry,
+    x_bits: list[int],
+    z_bits: list[int],
+    truth_model: str,
+) -> dict[str, Any]:
+    logical_indices = _logical_x_indices(geom)
+    return {
+        "code_id": code_id,
+        "round_index": shot_index,
+        "dataset": dataset_name,
+        "n_qubits": geom.n_data,
+        "logical_observable": "x_error_midline_parity",
+        "logical_indices": logical_indices,
+        "logical_truth": _parity_on(logical_indices, x_bits),
+        "x_error_indices": _error_indices(x_bits),
+        "z_error_indices": _error_indices(z_bits),
+        "truth_model": truth_model,
+    }
+
+
 def _simulate_repeated_round_events(
     *,
     geom: SurfaceGeometry,
@@ -370,7 +412,7 @@ def _simulate_repeated_round_events(
     rng: random.Random,
     emit_x_events: bool,
     emit_z_events: bool,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[int], list[int]]:
     x_bits = [0] * geom.n_data
     z_bits = [0] * geom.n_data
     prev_sx = [0] * geom.n_x
@@ -395,7 +437,7 @@ def _simulate_repeated_round_events(
         prev_sx = sx
         prev_sz = sz
 
-    return events
+    return events, x_bits, z_bits
 
 
 def _digitize_periodic(value: float, period: float, width: float, bias: float = 0.0) -> int:
@@ -493,7 +535,7 @@ def _simulate_gkp_repeated_round_events(
     rng: random.Random,
     emit_x_events: bool,
     emit_z_events: bool,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[int], list[int]]:
     q_shift = [0.0] * geom.n_data
     p_shift = [0.0] * geom.n_data
     prev_sx = [0] * geom.n_x
@@ -528,12 +570,16 @@ def _simulate_gkp_repeated_round_events(
         prev_sx = sx
         prev_sz = sz
 
-    return events
+    sqrt_pi = math.sqrt(math.pi)
+    x_bits = [_digitize_periodic(v, period=sqrt_pi, width=0.25 * sqrt_pi, bias=0.0) for v in q_shift]
+    z_bits = [_digitize_periodic(v, period=sqrt_pi, width=0.25 * sqrt_pi, bias=0.0) for v in p_shift]
+    return events, x_bits, z_bits
 
 
 def _write_dataset(
     path: Path,
     *,
+    truth_path: Path,
     dataset_name: str,
     code_id: str,
     shots: int,
@@ -553,9 +599,9 @@ def _write_dataset(
     total_events = 0
     rng = random.Random(seed)
 
-    with path.open("w", encoding="utf-8") as f:
+    with path.open("w", encoding="utf-8") as f, truth_path.open("w", encoding="utf-8") as tf:
         for shot_index in range(shots):
-            events = _simulate_repeated_round_events(
+            events, x_bits, z_bits = _simulate_repeated_round_events(
                 geom=geom,
                 rounds=rounds,
                 p_gate=p_gate,
@@ -596,10 +642,26 @@ def _write_dataset(
                 },
             }
             f.write(json.dumps(rec, separators=(",", ":")) + "\n")
+            tf.write(
+                json.dumps(
+                    _truth_record(
+                        code_id=code_id,
+                        shot_index=shot_index,
+                        dataset_name=dataset_name,
+                        geom=geom,
+                        x_bits=x_bits,
+                        z_bits=z_bits,
+                        truth_model="surface_final_pauli_state",
+                    ),
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
 
     return {
         "dataset": dataset_name,
         "request_file": path.name,
+        "truth_file": truth_path.name,
         "request_lines": shots,
         "avg_request_events": float(total_events) / float(max(shots, 1)),
         "nonempty_request_event_rate": float(nonempty) / float(max(shots, 1)),
@@ -610,6 +672,7 @@ def _write_dataset(
 def _write_dataset_gkp(
     path: Path,
     *,
+    truth_path: Path,
     dataset_name: str,
     code_id: str,
     shots: int,
@@ -630,9 +693,9 @@ def _write_dataset_gkp(
     total_events = 0
     rng = random.Random(seed)
 
-    with path.open("w", encoding="utf-8") as f:
+    with path.open("w", encoding="utf-8") as f, truth_path.open("w", encoding="utf-8") as tf:
         for shot_index in range(shots):
-            events = _simulate_gkp_repeated_round_events(
+            events, x_bits, z_bits = _simulate_gkp_repeated_round_events(
                 geom=geom,
                 rounds=rounds,
                 sigma_shift=sigma_shift,
@@ -674,10 +737,26 @@ def _write_dataset_gkp(
                 },
             }
             f.write(json.dumps(rec, separators=(",", ":")) + "\n")
+            tf.write(
+                json.dumps(
+                    _truth_record(
+                        code_id=code_id,
+                        shot_index=shot_index,
+                        dataset_name=dataset_name,
+                        geom=geom,
+                        x_bits=x_bits,
+                        z_bits=z_bits,
+                        truth_model="gkp_reference_digitized_shift",
+                    ),
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
 
     return {
         "dataset": dataset_name,
         "request_file": path.name,
+        "truth_file": truth_path.name,
         "request_lines": shots,
         "avg_request_events": float(total_events) / float(max(shots, 1)),
         "nonempty_request_event_rate": float(nonempty) / float(max(shots, 1)),
@@ -746,6 +825,7 @@ def main() -> int:
         rows.append(
             _write_dataset(
                 out_dir / "decoder_requests_pennylane.ndjson",
+                truth_path=out_dir / "truth_pennylane.ndjson",
                 dataset_name="pennylane",
                 code_id=code_id,
                 shots=args.shots,
@@ -765,6 +845,7 @@ def main() -> int:
         rows.append(
             _write_dataset(
                 out_dir / "decoder_requests_qiskit.ndjson",
+                truth_path=out_dir / "truth_qiskit.ndjson",
                 dataset_name="qiskit",
                 code_id=code_id,
                 shots=args.shots,
@@ -784,6 +865,7 @@ def main() -> int:
         rows.append(
             _write_dataset(
                 out_dir / "decoder_requests_cirq.ndjson",
+                truth_path=out_dir / "truth_cirq.ndjson",
                 dataset_name="cirq",
                 code_id=code_id,
                 shots=args.shots,
@@ -803,6 +885,7 @@ def main() -> int:
         rows.append(
             _write_dataset(
                 out_dir / "decoder_requests_lidmas_reference.ndjson",
+                truth_path=out_dir / "truth_lidmas_reference.ndjson",
                 dataset_name="lidmas_reference",
                 code_id=code_id,
                 shots=args.shots,
@@ -832,6 +915,7 @@ def main() -> int:
         rows.append(
             _write_dataset_gkp(
                 out_dir / "decoder_requests_pennylane.ndjson",
+                truth_path=out_dir / "truth_pennylane.ndjson",
                 dataset_name="pennylane",
                 code_id=code_id,
                 shots=args.shots,
@@ -852,6 +936,7 @@ def main() -> int:
         rows.append(
             _write_dataset_gkp(
                 out_dir / "decoder_requests_qiskit.ndjson",
+                truth_path=out_dir / "truth_qiskit.ndjson",
                 dataset_name="qiskit",
                 code_id=code_id,
                 shots=args.shots,
@@ -872,6 +957,7 @@ def main() -> int:
         rows.append(
             _write_dataset_gkp(
                 out_dir / "decoder_requests_cirq.ndjson",
+                truth_path=out_dir / "truth_cirq.ndjson",
                 dataset_name="cirq",
                 code_id=code_id,
                 shots=args.shots,
@@ -892,6 +978,7 @@ def main() -> int:
         rows.append(
             _write_dataset_gkp(
                 out_dir / "decoder_requests_lidmas_reference.ndjson",
+                truth_path=out_dir / "truth_lidmas_reference.ndjson",
                 dataset_name="lidmas_reference",
                 code_id=code_id,
                 shots=args.shots,
@@ -917,6 +1004,7 @@ def main() -> int:
             fieldnames=[
                 "dataset",
                 "request_file",
+                "truth_file",
                 "request_lines",
                 "avg_request_events",
                 "nonempty_request_event_rate",
