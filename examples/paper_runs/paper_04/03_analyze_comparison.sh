@@ -38,4 +38,12 @@ done < <(paper_resolve_decoders)
   --out-md "${OUT_DIR}/table_source_vs_lidmas.md" \
   --out-prefix "${OUT_DIR}/figure_source_vs_lidmas"
 
+"${PY_BIN}" "${SCRIPT_DIR}/scripts/analyze_logical_error_rate.py" \
+  --truth-dir "${REQUEST_DIR}" \
+  --replay-manifest "${REPLAY_DIR}/replay_manifest.csv" \
+  --responses-dir "${REPLAY_DIR}" \
+  --out-csv "${OUT_DIR}/table_logical_error_rate.csv" \
+  --out-md "${OUT_DIR}/table_logical_error_rate.md" \
+  --out-prefix "${OUT_DIR}/figure_logical_error_rate"
+
 echo "paper_04 step 03 complete: ${OUT_DIR}"

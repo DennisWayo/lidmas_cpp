@@ -79,4 +79,10 @@ done
   --manifest "${MANIFEST}" \
   --out-dir "${OUT_DIR}"
 
+"${PY_BIN}" "${SCRIPT_DIR}/scripts/compose_journal_results_figure.py" \
+  --analysis-dir "${OUT_DIR}" \
+  --out-prefix "${OUT_DIR}/figure_journal_results_summary" \
+  --manuscript-dir "${OUT_DIR}/manuscript_figures" \
+  --write-standalone
+
 echo "paper_04 unified analysis complete: ${OUT_DIR}"
